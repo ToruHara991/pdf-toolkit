@@ -74,7 +74,15 @@
     width:24px; height:24px; cursor:pointer; font-size:12px; color:var(--muted); line-height:1;
   }
   ul.filelist li button.icon-btn:hover{color:var(--ink); border-color:var(--muted);}
+  ul.filelist li button.icon-btn:disabled{opacity:.35; cursor:not-allowed;}
   ul.filelist li button.remove{color:var(--warn); border-color:var(--warn-bg);}
+  ul.filelist li.draggable-item{cursor:grab;}
+  ul.filelist li .drag-handle{
+    flex:0 0 auto; color:var(--muted); font-size:13px; letter-spacing:-2px;
+    user-select:none; cursor:grab; padding:0 2px;
+  }
+  ul.filelist li.dragging{opacity:.4;}
+  ul.filelist li.drag-over{border-color:var(--accent); background:var(--accent-bg);}
 
   .row{display:flex; gap:16px; flex-wrap:wrap; margin-top:14px;}
   .field{display:flex; flex-direction:column; gap:6px; font-size:12.5px; color:var(--muted); flex:1; min-width:180px;}
@@ -134,6 +142,7 @@
 
   <nav class="tabs">
     <button class="active" data-tab="pdf2jpg">PDF → JPG</button>
+    <button data-tab="merge">PDF 合併</button>
     <button data-tab="jpg2pdf">JPG → PDF</button>
     <button data-tab="split">分割 / 擷取頁面</button>
   </nav>
@@ -174,6 +183,26 @@
       </div>
       <div class="progress" id="progress-pdf2jpg"><div></div></div>
       <div class="results" id="results-pdf2jpg"></div>
+    </div>
+  </section>
+
+  <!-- ===================== PDF 合併 ===================== -->
+  <section class="panel" id="panel-merge">
+    <div class="card">
+      <h2>上傳 PDF 檔案</h2>
+      <p class="hint">可上傳多個 PDF，依下方清單順序合併成一份 PDF。拖曳項目（或用上下箭頭）調整順序。</p>
+      <div class="dropzone" id="dz-merge">
+        <p><strong>點擊選擇檔案</strong> 或拖曳多個 PDF 到此處</p>
+        <input type="file" id="input-merge" accept="application/pdf" multiple>
+      </div>
+      <ul class="filelist" id="list-merge"></ul>
+
+      <div class="actions">
+        <button class="primary" id="btn-merge">開始合併</button>
+        <span class="status" id="status-merge"></span>
+      </div>
+      <div class="progress" id="progress-merge"><div></div></div>
+      <div class="results" id="results-merge"></div>
     </div>
   </section>
 
@@ -310,6 +339,92 @@ function setupDropzone(dzId, inputId, onFiles){
   ["dragleave","drop"].forEach(evt=>dz.addEventListener(evt, e=>{ e.preventDefault(); dz.classList.remove("drag"); }));
   dz.addEventListener("drop", e=>{ onFiles(Array.from(e.dataTransfer.files)); });
 }
+function renderDraggableList(ul, files, opts){
+  opts = opts || {};
+  ul.innerHTML = "";
+  files.forEach((file, idx)=>{
+    const li = document.createElement("li");
+    li.className = "draggable-item";
+    li.draggable = true;
+
+    const handle = document.createElement("span");
+    handle.className = "drag-handle";
+    handle.textContent = "⋮⋮";
+    handle.title = "拖曳調整順序";
+
+    const nameSpan = document.createElement("span");
+    nameSpan.className = "name";
+    nameSpan.textContent = file.name;
+
+    const metaSpan = document.createElement("span");
+    metaSpan.className = "meta";
+    metaSpan.textContent = opts.meta ? opts.meta(file) : fmtSize(file.size);
+
+    const reorder = document.createElement("span");
+    reorder.className = "reorder";
+    const up = document.createElement("button");
+    up.className = "icon-btn"; up.textContent = "↑"; up.title = "上移";
+    up.disabled = idx === 0;
+    up.onclick = ()=>{
+      [files[idx-1], files[idx]] = [files[idx], files[idx-1]];
+      renderDraggableList(ul, files, opts);
+      if(opts.onChange) opts.onChange();
+    };
+    const down = document.createElement("button");
+    down.className = "icon-btn"; down.textContent = "↓"; down.title = "下移";
+    down.disabled = idx === files.length - 1;
+    down.onclick = ()=>{
+      [files[idx+1], files[idx]] = [files[idx], files[idx+1]];
+      renderDraggableList(ul, files, opts);
+      if(opts.onChange) opts.onChange();
+    };
+    reorder.appendChild(up); reorder.appendChild(down);
+
+    const rm = document.createElement("button");
+    rm.className = "icon-btn remove"; rm.textContent = "✕"; rm.title = "移除";
+    rm.onclick = ()=>{
+      files.splice(idx, 1);
+      renderDraggableList(ul, files, opts);
+      if(opts.onChange) opts.onChange();
+    };
+
+    li.appendChild(handle);
+    li.appendChild(nameSpan);
+    li.appendChild(metaSpan);
+    li.appendChild(reorder);
+    li.appendChild(rm);
+
+    li.addEventListener("dragstart", e=>{
+      e.dataTransfer.effectAllowed = "move";
+      e.dataTransfer.setData("text/plain", String(idx));
+      requestAnimationFrame(()=>li.classList.add("dragging"));
+    });
+    li.addEventListener("dragend", ()=>{
+      li.classList.remove("dragging");
+      ul.querySelectorAll("li").forEach(x=>x.classList.remove("drag-over"));
+    });
+    li.addEventListener("dragover", e=>{
+      e.preventDefault();
+      e.dataTransfer.dropEffect = "move";
+      li.classList.add("drag-over");
+    });
+    li.addEventListener("dragleave", ()=>li.classList.remove("drag-over"));
+    li.addEventListener("drop", e=>{
+      e.preventDefault();
+      li.classList.remove("drag-over");
+      const fromIdx = parseInt(e.dataTransfer.getData("text/plain"), 10);
+      const toIdx = idx;
+      if(isNaN(fromIdx) || fromIdx === toIdx) return;
+      const [moved] = files.splice(fromIdx, 1);
+      files.splice(toIdx, 0, moved);
+      renderDraggableList(ul, files, opts);
+      if(opts.onChange) opts.onChange();
+    });
+
+    ul.appendChild(li);
+  });
+}
+
 function parsePageSpec(str, maxPage){
   const parts = str.split(",").map(s=>s.trim()).filter(Boolean);
   if(parts.length === 0) throw new Error("請輸入頁碼");
@@ -335,21 +450,8 @@ function parsePageSpec(str, maxPage){
 let pdf2jpgFiles = [];
 setupDropzone("dz-pdf2jpg","input-pdf2jpg", files=>{
   pdf2jpgFiles = pdf2jpgFiles.concat(files.filter(f=>f.type==="application/pdf"));
-  renderPdf2jpgList();
+  renderDraggableList(document.getElementById("list-pdf2jpg"), pdf2jpgFiles, {});
 });
-function renderPdf2jpgList(){
-  const ul = document.getElementById("list-pdf2jpg");
-  ul.innerHTML = "";
-  pdf2jpgFiles.forEach((f,idx)=>{
-    const li = document.createElement("li");
-    li.innerHTML = `<span class="name">${f.name}</span><span class="meta">${fmtSize(f.size)}</span>`;
-    const rm = document.createElement("button");
-    rm.className = "icon-btn remove"; rm.textContent = "✕";
-    rm.onclick = ()=>{ pdf2jpgFiles.splice(idx,1); renderPdf2jpgList(); };
-    li.appendChild(rm);
-    ul.appendChild(li);
-  });
-}
 document.getElementById("btn-pdf2jpg").addEventListener("click", async ()=>{
   const statusEl = document.getElementById("status-pdf2jpg");
   const resultsEl = document.getElementById("results-pdf2jpg");
@@ -410,39 +512,51 @@ document.getElementById("btn-pdf2jpg").addEventListener("click", async ()=>{
   }
 });
 
+// ===================== PDF 合併 =====================
+let mergeFiles = [];
+setupDropzone("dz-merge","input-merge", files=>{
+  mergeFiles = mergeFiles.concat(files.filter(f=>f.type==="application/pdf"));
+  renderDraggableList(document.getElementById("list-merge"), mergeFiles, {});
+});
+document.getElementById("btn-merge").addEventListener("click", async ()=>{
+  const statusEl = document.getElementById("status-merge");
+  const resultsEl = document.getElementById("results-merge");
+  const progressWrap = document.getElementById("progress-merge");
+  const progressBar = progressWrap.querySelector("div");
+  resultsEl.innerHTML = ""; statusEl.textContent = ""; statusEl.classList.remove("error");
+  if(mergeFiles.length < 2){ statusEl.textContent = "請至少上傳兩個 PDF 檔案"; statusEl.classList.add("error"); return; }
+
+  const btn = document.getElementById("btn-merge");
+  btn.disabled = true; progressWrap.classList.add("show"); progressBar.style.width = "0%";
+
+  try{
+    const mergedDoc = await PDFDocument.create();
+    for(let i=0;i<mergeFiles.length;i++){
+      statusEl.textContent = `合併中：${mergeFiles[i].name}（${i+1}/${mergeFiles.length}）`;
+      const bytes = await mergeFiles[i].arrayBuffer();
+      const srcDoc = await PDFDocument.load(bytes);
+      const copied = await mergedDoc.copyPages(srcDoc, srcDoc.getPageIndices());
+      copied.forEach(p=>mergedDoc.addPage(p));
+      progressBar.style.width = Math.round(((i+1)/mergeFiles.length)*100) + "%";
+    }
+    const bytes = await mergedDoc.save();
+    addResultLink(resultsEl, new Blob([bytes], { type: "application/pdf" }), "merged.pdf");
+    statusEl.textContent = `完成，共合併 ${mergeFiles.length} 個 PDF 檔案`;
+  } catch(err){
+    console.error(err);
+    statusEl.textContent = "發生錯誤：" + err.message;
+    statusEl.classList.add("error");
+  } finally {
+    btn.disabled = false; progressWrap.classList.remove("show");
+  }
+});
+
 // ===================== JPG -> PDF =====================
 let jpg2pdfFiles = [];
 setupDropzone("dz-jpg2pdf","input-jpg2pdf", files=>{
   jpg2pdfFiles = jpg2pdfFiles.concat(files.filter(f=>/image\/(jpeg|png)/.test(f.type)));
-  renderJpg2pdfList();
+  renderDraggableList(document.getElementById("list-jpg2pdf"), jpg2pdfFiles, {});
 });
-function renderJpg2pdfList(){
-  const ul = document.getElementById("list-jpg2pdf");
-  ul.innerHTML = "";
-  jpg2pdfFiles.forEach((f,idx)=>{
-    const li = document.createElement("li");
-    const nameSpan = document.createElement("span");
-    nameSpan.className = "name"; nameSpan.textContent = f.name;
-    const metaSpan = document.createElement("span");
-    metaSpan.className = "meta"; metaSpan.textContent = fmtSize(f.size);
-    const reorder = document.createElement("span");
-    reorder.className = "reorder";
-    const up = document.createElement("button");
-    up.className = "icon-btn"; up.textContent = "↑";
-    up.disabled = idx === 0;
-    up.onclick = ()=>{ [jpg2pdfFiles[idx-1], jpg2pdfFiles[idx]] = [jpg2pdfFiles[idx], jpg2pdfFiles[idx-1]]; renderJpg2pdfList(); };
-    const down = document.createElement("button");
-    down.className = "icon-btn"; down.textContent = "↓";
-    down.disabled = idx === jpg2pdfFiles.length-1;
-    down.onclick = ()=>{ [jpg2pdfFiles[idx+1], jpg2pdfFiles[idx]] = [jpg2pdfFiles[idx], jpg2pdfFiles[idx+1]]; renderJpg2pdfList(); };
-    reorder.appendChild(up); reorder.appendChild(down);
-    const rm = document.createElement("button");
-    rm.className = "icon-btn remove"; rm.textContent = "✕";
-    rm.onclick = ()=>{ jpg2pdfFiles.splice(idx,1); renderJpg2pdfList(); };
-    li.appendChild(nameSpan); li.appendChild(metaSpan); li.appendChild(reorder); li.appendChild(rm);
-    ul.appendChild(li);
-  });
-}
 async function embedImage(pdfDoc, file){
   const bytes = await file.arrayBuffer();
   if(file.type === "image/png") return await pdfDoc.embedPng(bytes);

@@ -1,0 +1,610 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>PDF 工具箱</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/pdf-lib/1.17.1/pdf-lib.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
+<style>
+  :root{
+    --paper:#FAFAF7;
+    --surface:#FFFFFF;
+    --border:#E3E0D6;
+    --ink:#1B1B18;
+    --muted:#726D62;
+    --accent:#0E5C51;
+    --accent-ink:#083E37;
+    --accent-bg:#E7F1EE;
+    --warn:#B3492B;
+    --warn-bg:#FBEAE5;
+    --mono: ui-monospace, "SF Mono", "Cascadia Mono", "Consolas", monospace;
+    --sans: -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang TC", "Microsoft JhengHei", sans-serif;
+  }
+  *{box-sizing:border-box;}
+  body{
+    margin:0; background:var(--paper); color:var(--ink); font-family:var(--sans);
+    -webkit-font-smoothing:antialiased;
+  }
+  .app{max-width:920px; margin:0 auto; padding:32px 20px 80px;}
+  header.top{display:flex; align-items:center; gap:14px; margin-bottom:28px;}
+  .stack-icon{flex:0 0 auto;}
+  header.top h1{font-size:20px; margin:0; letter-spacing:-0.01em;}
+  header.top p{margin:2px 0 0; font-size:13px; color:var(--muted);}
+
+  nav.tabs{display:flex; gap:4px; border-bottom:1px solid var(--border); margin-bottom:24px;}
+  nav.tabs button{
+    appearance:none; border:none; background:none; cursor:pointer;
+    font-family:var(--sans); font-size:14px; color:var(--muted);
+    padding:10px 16px; border-bottom:2px solid transparent; margin-bottom:-1px;
+    transition:color .15s ease, border-color .15s ease;
+  }
+  nav.tabs button:hover{color:var(--ink);}
+  nav.tabs button.active{color:var(--accent-ink); border-bottom-color:var(--accent); font-weight:600;}
+
+  section.panel{display:none;}
+  section.panel.active{display:block; animation:fade .18s ease;}
+  @keyframes fade{from{opacity:0; transform:translateY(2px);} to{opacity:1; transform:translateY(0);}}
+
+  .card{background:var(--surface); border:1px solid var(--border); border-radius:10px; padding:20px; margin-bottom:16px;}
+  .card h2{font-size:14px; margin:0 0 4px; letter-spacing:.02em;}
+  .card .hint{font-size:12.5px; color:var(--muted); margin:0 0 14px;}
+
+  .dropzone{
+    border:1.5px dashed var(--border); border-radius:8px; padding:28px 16px;
+    text-align:center; cursor:pointer; transition:border-color .15s, background .15s;
+    background:var(--paper);
+  }
+  .dropzone.drag{border-color:var(--accent); background:var(--accent-bg);}
+  .dropzone p{margin:0; font-size:13px; color:var(--muted);}
+  .dropzone strong{color:var(--ink);}
+  .dropzone input{display:none;}
+
+  ul.filelist{list-style:none; margin:14px 0 0; padding:0; display:flex; flex-direction:column; gap:8px;}
+  ul.filelist li{
+    display:flex; align-items:center; gap:10px; border:1px solid var(--border); border-radius:7px;
+    padding:8px 10px; font-size:13px; background:var(--paper);
+  }
+  ul.filelist li .name{flex:1; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;}
+  ul.filelist li .meta{font-family:var(--mono); font-size:11.5px; color:var(--muted); flex:0 0 auto;}
+  ul.filelist li .reorder{display:flex; gap:2px; flex:0 0 auto;}
+  ul.filelist li button.icon-btn{
+    appearance:none; border:1px solid var(--border); background:var(--surface); border-radius:5px;
+    width:24px; height:24px; cursor:pointer; font-size:12px; color:var(--muted); line-height:1;
+  }
+  ul.filelist li button.icon-btn:hover{color:var(--ink); border-color:var(--muted);}
+  ul.filelist li button.remove{color:var(--warn); border-color:var(--warn-bg);}
+
+  .row{display:flex; gap:16px; flex-wrap:wrap; margin-top:14px;}
+  .field{display:flex; flex-direction:column; gap:6px; font-size:12.5px; color:var(--muted); flex:1; min-width:180px;}
+  .field select, .field input[type=text], .field input[type=number], .field textarea{
+    font-family:var(--sans); font-size:13.5px; color:var(--ink);
+    border:1px solid var(--border); border-radius:6px; padding:8px 10px; background:var(--surface);
+  }
+  .field textarea{font-family:var(--mono); font-size:12.5px; min-height:74px; resize:vertical;}
+  .radio-group{display:flex; flex-direction:column; gap:8px;}
+  .radio-group label{display:flex; align-items:flex-start; gap:8px; font-size:13px; color:var(--ink); cursor:pointer;}
+  .radio-group input{margin-top:3px;}
+  .radio-group .sub{display:block; font-size:11.5px; color:var(--muted); margin-top:2px;}
+
+  .actions{display:flex; align-items:center; gap:12px; margin-top:18px;}
+  button.primary{
+    appearance:none; border:none; background:var(--accent); color:#fff; font-family:var(--sans);
+    font-size:13.5px; font-weight:600; padding:10px 20px; border-radius:7px; cursor:pointer;
+    transition:background .15s ease;
+  }
+  button.primary:hover{background:var(--accent-ink);}
+  button.primary:disabled{background:var(--border); color:var(--muted); cursor:not-allowed;}
+  .status{font-size:12.5px; color:var(--muted); font-family:var(--mono);}
+  .status.error{color:var(--warn);}
+
+  .progress{height:4px; background:var(--border); border-radius:2px; margin-top:14px; overflow:hidden; display:none;}
+  .progress.show{display:block;}
+  .progress > div{height:100%; background:var(--accent); width:0%; transition:width .12s linear;}
+
+  .results{margin-top:16px; display:flex; flex-direction:column; gap:8px;}
+  .results a{
+    display:flex; align-items:center; justify-content:space-between; gap:10px;
+    border:1px solid var(--accent); background:var(--accent-bg); color:var(--accent-ink);
+    border-radius:7px; padding:9px 12px; font-size:13px; text-decoration:none; font-weight:600;
+  }
+  .results a:hover{background:#DCEBE7;}
+  .results a .sz{font-family:var(--mono); font-weight:400; font-size:11.5px; color:var(--muted);}
+
+  footer.note{margin-top:28px; font-size:12px; color:var(--muted); text-align:center; line-height:1.6;}
+</style>
+</head>
+<body>
+<div class="app">
+
+  <header class="top">
+    <svg class="stack-icon" width="34" height="34" viewBox="0 0 34 34" fill="none">
+      <rect x="7" y="4" width="20" height="24" rx="2" fill="#E7F1EE" stroke="#0E5C51" stroke-width="1.4"/>
+      <rect x="4" y="8" width="20" height="24" rx="2" fill="#FAFAF7" stroke="#0E5C51" stroke-width="1.4"/>
+      <line x1="8" y1="16" x2="18" y2="16" stroke="#0E5C51" stroke-width="1.2"/>
+      <line x1="8" y1="20" x2="18" y2="20" stroke="#0E5C51" stroke-width="1.2"/>
+      <line x1="8" y1="24" x2="14" y2="24" stroke="#0E5C51" stroke-width="1.2"/>
+    </svg>
+    <div>
+      <h1>PDF 工具箱</h1>
+      <p>PDF ⇄ JPG 轉檔・頁面分割與擷取</p>
+    </div>
+  </header>
+
+  <nav class="tabs">
+    <button class="active" data-tab="pdf2jpg">PDF → JPG</button>
+    <button data-tab="jpg2pdf">JPG → PDF</button>
+    <button data-tab="split">分割 / 擷取頁面</button>
+  </nav>
+
+  <!-- ===================== PDF -> JPG ===================== -->
+  <section class="panel active" id="panel-pdf2jpg">
+    <div class="card">
+      <h2>上傳 PDF 檔案</h2>
+      <p class="hint">可一次選取多個 PDF（批次），或單一檔案。每一頁會輸出成一張 JPG。</p>
+      <div class="dropzone" id="dz-pdf2jpg">
+        <p><strong>點擊選擇檔案</strong> 或拖曳 PDF 到此處</p>
+        <input type="file" id="input-pdf2jpg" accept="application/pdf" multiple>
+      </div>
+      <ul class="filelist" id="list-pdf2jpg"></ul>
+
+      <div class="row">
+        <div class="field">
+          <label for="dpi-select">輸出解析度</label>
+          <select id="dpi-select">
+            <option value="1">低（螢幕閱讀，約 72 DPI）</option>
+            <option value="2.08" selected>中（一般用途，約 150 DPI）</option>
+            <option value="4.17">高（列印品質，約 300 DPI）</option>
+          </select>
+        </div>
+        <div class="field">
+          <label for="jpg-quality">JPG 壓縮品質</label>
+          <select id="jpg-quality">
+            <option value="0.7">標準</option>
+            <option value="0.9" selected>高</option>
+            <option value="1">最高（檔案較大）</option>
+          </select>
+        </div>
+      </div>
+
+      <div class="actions">
+        <button class="primary" id="btn-pdf2jpg">開始轉換</button>
+        <span class="status" id="status-pdf2jpg"></span>
+      </div>
+      <div class="progress" id="progress-pdf2jpg"><div></div></div>
+      <div class="results" id="results-pdf2jpg"></div>
+    </div>
+  </section>
+
+  <!-- ===================== JPG -> PDF ===================== -->
+  <section class="panel" id="panel-jpg2pdf">
+    <div class="card">
+      <h2>上傳 JPG 檔案</h2>
+      <p class="hint">可一次選取多張圖片（批次），或單張。合併模式下的頁面順序 = 下方清單順序，可用箭頭調整。</p>
+      <div class="dropzone" id="dz-jpg2pdf">
+        <p><strong>點擊選擇檔案</strong> 或拖曳 JPG／PNG 到此處</p>
+        <input type="file" id="input-jpg2pdf" accept="image/jpeg,image/png" multiple>
+      </div>
+      <ul class="filelist" id="list-jpg2pdf"></ul>
+
+      <div class="row">
+        <div class="field" style="flex:1 1 100%;">
+          <label>輸出方式</label>
+          <div class="radio-group">
+            <label><input type="radio" name="jpgmode" value="merge" checked>
+              合併成一個 PDF（所有圖片依序成為同一份文件的多頁）</label>
+            <label><input type="radio" name="jpgmode" value="separate">
+              各自轉成獨立 PDF（每張圖片一個檔案，一次打包下載）</label>
+          </div>
+        </div>
+      </div>
+
+      <div class="actions">
+        <button class="primary" id="btn-jpg2pdf">開始轉換</button>
+        <span class="status" id="status-jpg2pdf"></span>
+      </div>
+      <div class="progress" id="progress-jpg2pdf"><div></div></div>
+      <div class="results" id="results-jpg2pdf"></div>
+    </div>
+  </section>
+
+  <!-- ===================== SPLIT / EXTRACT ===================== -->
+  <section class="panel" id="panel-split">
+    <div class="card">
+      <h2>上傳 PDF 檔案</h2>
+      <p class="hint">請上傳單一 PDF 檔案進行分割或擷取頁面。</p>
+      <div class="dropzone" id="dz-split">
+        <p><strong>點擊選擇檔案</strong> 或拖曳單一 PDF 到此處</p>
+        <input type="file" id="input-split" accept="application/pdf">
+      </div>
+      <ul class="filelist" id="list-split"></ul>
+
+      <div class="row">
+        <div class="field" style="flex:1 1 100%;">
+          <label>模式</label>
+          <div class="radio-group">
+            <label><input type="radio" name="splitmode" value="every" checked>
+              依固定頁數平均分割
+              <span class="sub">例如每 5 頁一個檔案，最後一份可能不足額</span>
+            </label>
+            <label><input type="radio" name="splitmode" value="custom">
+              自訂範圍分割（多檔輸出）
+              <span class="sub">每一行代表一個輸出檔案，例如 1-3 / 4-6 / 7-10</span>
+            </label>
+            <label><input type="radio" name="splitmode" value="extract">
+              擷取指定頁面（單一檔案輸出）
+              <span class="sub">例如 1,3,5-8，會依輸入順序組成一份新 PDF</span>
+            </label>
+          </div>
+        </div>
+      </div>
+
+      <div class="row">
+        <div class="field" id="field-every">
+          <label for="every-n">每幾頁分割一次</label>
+          <input type="number" id="every-n" min="1" value="5">
+        </div>
+        <div class="field" id="field-custom" style="display:none;">
+          <label for="custom-ranges">每行一個輸出檔案的頁碼範圍</label>
+          <textarea id="custom-ranges" placeholder="1-3&#10;4-6&#10;7-10"></textarea>
+        </div>
+        <div class="field" id="field-extract" style="display:none;">
+          <label for="extract-pages">要擷取的頁碼</label>
+          <input type="text" id="extract-pages" placeholder="1,3,5-8">
+        </div>
+      </div>
+
+      <div class="actions">
+        <button class="primary" id="btn-split">開始處理</button>
+        <span class="status" id="status-split"></span>
+      </div>
+      <div class="progress" id="progress-split"><div></div></div>
+      <div class="results" id="results-split"></div>
+    </div>
+  </section>
+
+  <footer class="note">所有轉換都在您的瀏覽器內完成，檔案不會上傳到任何伺服器。</footer>
+</div>
+
+<script>
+pdfjsLib.GlobalWorkerOptions.workerSrc = "https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js";
+const { PDFDocument } = PDFLib;
+
+// ---------- tab switching ----------
+document.querySelectorAll("nav.tabs button").forEach(btn=>{
+  btn.addEventListener("click", ()=>{
+    document.querySelectorAll("nav.tabs button").forEach(b=>b.classList.remove("active"));
+    document.querySelectorAll("section.panel").forEach(p=>p.classList.remove("active"));
+    btn.classList.add("active");
+    document.getElementById("panel-"+btn.dataset.tab).classList.add("active");
+  });
+});
+
+// ---------- shared helpers ----------
+function fmtSize(bytes){
+  if(bytes < 1024) return bytes + " B";
+  if(bytes < 1024*1024) return (bytes/1024).toFixed(1) + " KB";
+  return (bytes/1024/1024).toFixed(2) + " MB";
+}
+function downloadBlob(blob, filename){
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url; a.download = filename;
+  document.body.appendChild(a); a.click(); a.remove();
+  setTimeout(()=>URL.revokeObjectURL(url), 4000);
+}
+function addResultLink(container, blob, filename){
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url; a.download = filename;
+  a.innerHTML = `<span>下載 ${filename}</span><span class="sz">${fmtSize(blob.size)}</span>`;
+  container.appendChild(a);
+}
+function setupDropzone(dzId, inputId, onFiles){
+  const dz = document.getElementById(dzId);
+  const input = document.getElementById(inputId);
+  dz.addEventListener("click", ()=>input.click());
+  input.addEventListener("change", ()=>{ onFiles(Array.from(input.files)); input.value=""; });
+  ["dragenter","dragover"].forEach(evt=>dz.addEventListener(evt, e=>{ e.preventDefault(); dz.classList.add("drag"); }));
+  ["dragleave","drop"].forEach(evt=>dz.addEventListener(evt, e=>{ e.preventDefault(); dz.classList.remove("drag"); }));
+  dz.addEventListener("drop", e=>{ onFiles(Array.from(e.dataTransfer.files)); });
+}
+function parsePageSpec(str, maxPage){
+  const parts = str.split(",").map(s=>s.trim()).filter(Boolean);
+  if(parts.length === 0) throw new Error("請輸入頁碼");
+  let pages = [];
+  for(const part of parts){
+    if(part.includes("-")){
+      let [a,b] = part.split("-").map(n=>parseInt(n.trim(),10));
+      if(isNaN(a) || isNaN(b)) throw new Error(`無法解析範圍："${part}"`);
+      if(a > b) [a,b] = [b,a];
+      if(a < 1 || b > maxPage) throw new Error(`範圍 ${part} 超出頁數（1-${maxPage}）`);
+      for(let i=a;i<=b;i++) pages.push(i);
+    } else {
+      const n = parseInt(part,10);
+      if(isNaN(n)) throw new Error(`無法解析頁碼："${part}"`);
+      if(n < 1 || n > maxPage) throw new Error(`頁碼 ${n} 超出範圍（1-${maxPage}）`);
+      pages.push(n);
+    }
+  }
+  return pages;
+}
+
+// ===================== PDF -> JPG =====================
+let pdf2jpgFiles = [];
+setupDropzone("dz-pdf2jpg","input-pdf2jpg", files=>{
+  pdf2jpgFiles = pdf2jpgFiles.concat(files.filter(f=>f.type==="application/pdf"));
+  renderPdf2jpgList();
+});
+function renderPdf2jpgList(){
+  const ul = document.getElementById("list-pdf2jpg");
+  ul.innerHTML = "";
+  pdf2jpgFiles.forEach((f,idx)=>{
+    const li = document.createElement("li");
+    li.innerHTML = `<span class="name">${f.name}</span><span class="meta">${fmtSize(f.size)}</span>`;
+    const rm = document.createElement("button");
+    rm.className = "icon-btn remove"; rm.textContent = "✕";
+    rm.onclick = ()=>{ pdf2jpgFiles.splice(idx,1); renderPdf2jpgList(); };
+    li.appendChild(rm);
+    ul.appendChild(li);
+  });
+}
+document.getElementById("btn-pdf2jpg").addEventListener("click", async ()=>{
+  const statusEl = document.getElementById("status-pdf2jpg");
+  const resultsEl = document.getElementById("results-pdf2jpg");
+  const progressWrap = document.getElementById("progress-pdf2jpg");
+  const progressBar = progressWrap.querySelector("div");
+  resultsEl.innerHTML = ""; statusEl.textContent = ""; statusEl.classList.remove("error");
+  if(pdf2jpgFiles.length === 0){ statusEl.textContent = "請先上傳至少一個 PDF 檔案"; statusEl.classList.add("error"); return; }
+
+  const scale = parseFloat(document.getElementById("dpi-select").value);
+  const quality = parseFloat(document.getElementById("jpg-quality").value);
+  const btn = document.getElementById("btn-pdf2jpg");
+  btn.disabled = true; progressWrap.classList.add("show"); progressBar.style.width = "0%";
+
+  try{
+    const outputs = []; // {filename, blob}
+    let totalPages = 0, donePages = 0;
+    const docs = [];
+    for(const file of pdf2jpgFiles){
+      const buf = await file.arrayBuffer();
+      const pdf = await pdfjsLib.getDocument({ data: buf }).promise;
+      docs.push({ file, pdf });
+      totalPages += pdf.numPages;
+    }
+    for(const {file, pdf} of docs){
+      const base = file.name.replace(/\.pdf$/i, "");
+      for(let i=1; i<=pdf.numPages; i++){
+        statusEl.textContent = `轉換中：${file.name}（第 ${i}/${pdf.numPages} 頁）`;
+        const page = await pdf.getPage(i);
+        const viewport = page.getViewport({ scale });
+        const canvas = document.createElement("canvas");
+        canvas.width = Math.ceil(viewport.width);
+        canvas.height = Math.ceil(viewport.height);
+        const ctx = canvas.getContext("2d");
+        await page.render({ canvasContext: ctx, viewport }).promise;
+        const blob = await new Promise(res=>canvas.toBlob(res, "image/jpeg", quality));
+        const pageLabel = pdf.numPages > 1 ? `_p${String(i).padStart(2,"0")}` : "";
+        outputs.push({ filename: `${base}${pageLabel}.jpg`, blob });
+        donePages++;
+        progressBar.style.width = Math.round((donePages/totalPages)*100) + "%";
+      }
+    }
+    if(outputs.length === 1){
+      addResultLink(resultsEl, outputs[0].blob, outputs[0].filename);
+    } else {
+      statusEl.textContent = "打包成 ZIP 中…";
+      const zip = new JSZip();
+      outputs.forEach(o=>zip.file(o.filename, o.blob));
+      const zipBlob = await zip.generateAsync({ type: "blob" });
+      addResultLink(resultsEl, zipBlob, "converted_jpgs.zip");
+    }
+    statusEl.textContent = `完成，共輸出 ${outputs.length} 張圖片`;
+  } catch(err){
+    console.error(err);
+    statusEl.textContent = "發生錯誤：" + err.message;
+    statusEl.classList.add("error");
+  } finally {
+    btn.disabled = false; progressWrap.classList.remove("show");
+  }
+});
+
+// ===================== JPG -> PDF =====================
+let jpg2pdfFiles = [];
+setupDropzone("dz-jpg2pdf","input-jpg2pdf", files=>{
+  jpg2pdfFiles = jpg2pdfFiles.concat(files.filter(f=>/image\/(jpeg|png)/.test(f.type)));
+  renderJpg2pdfList();
+});
+function renderJpg2pdfList(){
+  const ul = document.getElementById("list-jpg2pdf");
+  ul.innerHTML = "";
+  jpg2pdfFiles.forEach((f,idx)=>{
+    const li = document.createElement("li");
+    const nameSpan = document.createElement("span");
+    nameSpan.className = "name"; nameSpan.textContent = f.name;
+    const metaSpan = document.createElement("span");
+    metaSpan.className = "meta"; metaSpan.textContent = fmtSize(f.size);
+    const reorder = document.createElement("span");
+    reorder.className = "reorder";
+    const up = document.createElement("button");
+    up.className = "icon-btn"; up.textContent = "↑";
+    up.disabled = idx === 0;
+    up.onclick = ()=>{ [jpg2pdfFiles[idx-1], jpg2pdfFiles[idx]] = [jpg2pdfFiles[idx], jpg2pdfFiles[idx-1]]; renderJpg2pdfList(); };
+    const down = document.createElement("button");
+    down.className = "icon-btn"; down.textContent = "↓";
+    down.disabled = idx === jpg2pdfFiles.length-1;
+    down.onclick = ()=>{ [jpg2pdfFiles[idx+1], jpg2pdfFiles[idx]] = [jpg2pdfFiles[idx], jpg2pdfFiles[idx+1]]; renderJpg2pdfList(); };
+    reorder.appendChild(up); reorder.appendChild(down);
+    const rm = document.createElement("button");
+    rm.className = "icon-btn remove"; rm.textContent = "✕";
+    rm.onclick = ()=>{ jpg2pdfFiles.splice(idx,1); renderJpg2pdfList(); };
+    li.appendChild(nameSpan); li.appendChild(metaSpan); li.appendChild(reorder); li.appendChild(rm);
+    ul.appendChild(li);
+  });
+}
+async function embedImage(pdfDoc, file){
+  const bytes = await file.arrayBuffer();
+  if(file.type === "image/png") return await pdfDoc.embedPng(bytes);
+  return await pdfDoc.embedJpg(bytes);
+}
+document.getElementById("btn-jpg2pdf").addEventListener("click", async ()=>{
+  const statusEl = document.getElementById("status-jpg2pdf");
+  const resultsEl = document.getElementById("results-jpg2pdf");
+  const progressWrap = document.getElementById("progress-jpg2pdf");
+  const progressBar = progressWrap.querySelector("div");
+  resultsEl.innerHTML = ""; statusEl.textContent = ""; statusEl.classList.remove("error");
+  if(jpg2pdfFiles.length === 0){ statusEl.textContent = "請先上傳至少一張圖片"; statusEl.classList.add("error"); return; }
+
+  const mode = document.querySelector('input[name="jpgmode"]:checked').value;
+  const btn = document.getElementById("btn-jpg2pdf");
+  btn.disabled = true; progressWrap.classList.add("show"); progressBar.style.width = "0%";
+
+  try{
+    if(mode === "merge"){
+      const pdfDoc = await PDFDocument.create();
+      for(let i=0;i<jpg2pdfFiles.length;i++){
+        statusEl.textContent = `處理中：${jpg2pdfFiles[i].name}`;
+        const img = await embedImage(pdfDoc, jpg2pdfFiles[i]);
+        const page = pdfDoc.addPage([img.width, img.height]);
+        page.drawImage(img, { x:0, y:0, width: img.width, height: img.height });
+        progressBar.style.width = Math.round(((i+1)/jpg2pdfFiles.length)*100) + "%";
+      }
+      const bytes = await pdfDoc.save();
+      addResultLink(resultsEl, new Blob([bytes], { type: "application/pdf" }), "merged.pdf");
+      statusEl.textContent = `完成，共合併 ${jpg2pdfFiles.length} 張圖片為一份 PDF`;
+    } else {
+      const zip = new JSZip();
+      for(let i=0;i<jpg2pdfFiles.length;i++){
+        statusEl.textContent = `處理中：${jpg2pdfFiles[i].name}`;
+        const pdfDoc = await PDFDocument.create();
+        const img = await embedImage(pdfDoc, jpg2pdfFiles[i]);
+        const page = pdfDoc.addPage([img.width, img.height]);
+        page.drawImage(img, { x:0, y:0, width: img.width, height: img.height });
+        const bytes = await pdfDoc.save();
+        const base = jpg2pdfFiles[i].name.replace(/\.(jpe?g|png)$/i, "");
+        zip.file(`${base}.pdf`, bytes);
+        progressBar.style.width = Math.round(((i+1)/jpg2pdfFiles.length)*100) + "%";
+      }
+      statusEl.textContent = "打包成 ZIP 中…";
+      const zipBlob = await zip.generateAsync({ type: "blob" });
+      addResultLink(resultsEl, zipBlob, "converted_pdfs.zip");
+      statusEl.textContent = `完成，共輸出 ${jpg2pdfFiles.length} 個獨立 PDF`;
+    }
+  } catch(err){
+    console.error(err);
+    statusEl.textContent = "發生錯誤：" + err.message;
+    statusEl.classList.add("error");
+  } finally {
+    btn.disabled = false; progressWrap.classList.remove("show");
+  }
+});
+
+// ===================== SPLIT / EXTRACT =====================
+let splitFile = null;
+let splitPdfDoc = null;
+setupDropzone("dz-split","input-split", async files=>{
+  if(files.length === 0) return;
+  splitFile = files.find(f=>f.type==="application/pdf") || files[0];
+  const ul = document.getElementById("list-split");
+  ul.innerHTML = "";
+  const statusEl = document.getElementById("status-split");
+  statusEl.textContent = "讀取檔案中…"; statusEl.classList.remove("error");
+  try{
+    const bytes = await splitFile.arrayBuffer();
+    splitPdfDoc = await PDFDocument.load(bytes);
+    const pageCount = splitPdfDoc.getPageCount();
+    const li = document.createElement("li");
+    li.innerHTML = `<span class="name">${splitFile.name}</span><span class="meta">共 ${pageCount} 頁 · ${fmtSize(splitFile.size)}</span>`;
+    const rm = document.createElement("button");
+    rm.className = "icon-btn remove"; rm.textContent = "✕";
+    rm.onclick = ()=>{ splitFile = null; splitPdfDoc = null; ul.innerHTML = ""; };
+    li.appendChild(rm);
+    ul.appendChild(li);
+    statusEl.textContent = "";
+  } catch(err){
+    statusEl.textContent = "無法讀取此 PDF：" + err.message;
+    statusEl.classList.add("error");
+    splitFile = null; splitPdfDoc = null;
+  }
+});
+document.querySelectorAll('input[name="splitmode"]').forEach(radio=>{
+  radio.addEventListener("change", ()=>{
+    const mode = document.querySelector('input[name="splitmode"]:checked').value;
+    document.getElementById("field-every").style.display = mode === "every" ? "flex" : "none";
+    document.getElementById("field-custom").style.display = mode === "custom" ? "flex" : "none";
+    document.getElementById("field-extract").style.display = mode === "extract" ? "flex" : "none";
+  });
+});
+document.getElementById("btn-split").addEventListener("click", async ()=>{
+  const statusEl = document.getElementById("status-split");
+  const resultsEl = document.getElementById("results-split");
+  const progressWrap = document.getElementById("progress-split");
+  const progressBar = progressWrap.querySelector("div");
+  resultsEl.innerHTML = ""; statusEl.textContent = ""; statusEl.classList.remove("error");
+  if(!splitPdfDoc){ statusEl.textContent = "請先上傳一份 PDF 檔案"; statusEl.classList.add("error"); return; }
+
+  const mode = document.querySelector('input[name="splitmode"]:checked').value;
+  const maxPage = splitPdfDoc.getPageCount();
+  const base = splitFile.name.replace(/\.pdf$/i, "");
+  const btn = document.getElementById("btn-split");
+  btn.disabled = true; progressWrap.classList.add("show"); progressBar.style.width = "0%";
+
+  try{
+    let groups = []; // array of {label, pages(1-based array)}
+    if(mode === "every"){
+      const n = parseInt(document.getElementById("every-n").value, 10);
+      if(isNaN(n) || n < 1) throw new Error("請輸入有效的頁數");
+      for(let start=1; start<=maxPage; start+=n){
+        const end = Math.min(start+n-1, maxPage);
+        const pages = [];
+        for(let p=start;p<=end;p++) pages.push(p);
+        groups.push({ label: `${start}-${end}`, pages });
+      }
+    } else if(mode === "custom"){
+      const lines = document.getElementById("custom-ranges").value.split("\n").map(l=>l.trim()).filter(Boolean);
+      if(lines.length === 0) throw new Error("請至少輸入一行頁碼範圍");
+      for(const line of lines){
+        const pages = parsePageSpec(line, maxPage);
+        groups.push({ label: line.replace(/[^0-9]/g,"_"), pages });
+      }
+    } else {
+      const spec = document.getElementById("extract-pages").value;
+      const pages = parsePageSpec(spec, maxPage);
+      groups.push({ label: "extracted", pages });
+    }
+
+    const outputs = [];
+    for(let i=0;i<groups.length;i++){
+      statusEl.textContent = `處理中：檔案 ${i+1}/${groups.length}`;
+      const newDoc = await PDFDocument.create();
+      const zeroBased = groups[i].pages.map(p=>p-1);
+      const copied = await newDoc.copyPages(splitPdfDoc, zeroBased);
+      copied.forEach(p=>newDoc.addPage(p));
+      const bytes = await newDoc.save();
+      const filename = mode === "extract" ? `${base}_extracted.pdf` : `${base}_${groups[i].label}.pdf`;
+      outputs.push({ filename, blob: new Blob([bytes], { type: "application/pdf" }) });
+      progressBar.style.width = Math.round(((i+1)/groups.length)*100) + "%";
+    }
+
+    if(outputs.length === 1){
+      addResultLink(resultsEl, outputs[0].blob, outputs[0].filename);
+    } else {
+      statusEl.textContent = "打包成 ZIP 中…";
+      const zip = new JSZip();
+      outputs.forEach(o=>zip.file(o.filename, o.blob));
+      const zipBlob = await zip.generateAsync({ type: "blob" });
+      addResultLink(resultsEl, zipBlob, `${base}_split.zip`);
+    }
+    statusEl.textContent = `完成，共輸出 ${outputs.length} 個檔案`;
+  } catch(err){
+    console.error(err);
+    statusEl.textContent = "發生錯誤：" + err.message;
+    statusEl.classList.add("error");
+  } finally {
+    btn.disabled = false; progressWrap.classList.remove("show");
+  }
+});
+</script>
+</body>
+</html>

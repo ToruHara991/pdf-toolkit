@@ -121,6 +121,35 @@
   .results a .sz{font-family:var(--mono); font-weight:400; font-size:11.5px; color:var(--muted);}
 
   footer.note{margin-top:28px; font-size:12px; color:var(--muted); text-align:center; line-height:1.6;}
+
+  .thumb-toolbar{display:none; align-items:center; gap:10px; margin-top:10px; flex-wrap:wrap;}
+  .thumb-toolbar button.link-btn{
+    appearance:none; border:1px solid var(--border); background:var(--surface); border-radius:6px;
+    padding:5px 10px; font-size:12px; color:var(--ink); cursor:pointer;
+  }
+  .thumb-toolbar button.link-btn:hover{border-color:var(--muted);}
+  .thumb-status{font-size:12px; color:var(--muted); font-family:var(--mono);}
+  .thumb-grid{
+    display:grid; grid-template-columns:repeat(auto-fill, minmax(96px,1fr)); gap:10px;
+    margin-top:12px; max-height:420px; overflow-y:auto; padding:8px;
+    border:1px solid var(--border); border-radius:8px; background:var(--paper);
+  }
+  .thumb{
+    position:relative; cursor:pointer; border:2px solid transparent; border-radius:6px;
+    overflow:hidden; background:var(--surface); transition:border-color .12s, opacity .12s;
+  }
+  .thumb canvas{display:block; width:100%; height:auto;}
+  .thumb .pagenum{
+    position:absolute; left:4px; bottom:4px; background:rgba(0,0,0,.6); color:#fff;
+    font-size:10px; font-family:var(--mono); padding:1px 5px; border-radius:3px;
+  }
+  .thumb.kept{border-color:var(--accent);}
+  .thumb.removed{opacity:.35;}
+  .thumb.removed::after{
+    content:"✕"; position:absolute; inset:0; display:flex; align-items:center; justify-content:center;
+    font-size:26px; color:var(--warn); font-weight:700;
+  }
+  .thumb-loading{font-size:12.5px; color:var(--muted); padding:10px 6px; grid-column:1/-1;}
 </style>
 </head>
 <body>
@@ -263,7 +292,7 @@
             </label>
             <label><input type="radio" name="splitmode" value="extract">
               擷取指定頁面（單一檔案輸出）
-              <span class="sub">例如 1,3,5-8，會依輸入順序組成一份新 PDF</span>
+              <span class="sub">可直接輸入頁碼（如 1,3,5-8），或用下方縮圖預覽點選要保留的頁面；頁面會依原始順序排列</span>
             </label>
           </div>
         </div>
@@ -278,9 +307,15 @@
           <label for="custom-ranges">每行一個輸出檔案的頁碼範圍</label>
           <textarea id="custom-ranges" placeholder="1-3&#10;4-6&#10;7-10"></textarea>
         </div>
-        <div class="field" id="field-extract" style="display:none;">
-          <label for="extract-pages">要擷取的頁碼</label>
+        <div class="field" id="field-extract" style="display:none; flex:1 1 100%;">
+          <label for="extract-pages">要擷取的頁碼（可直接輸入，或在下方縮圖點選要保留 / 砍掉的頁面）</label>
           <input type="text" id="extract-pages" placeholder="1,3,5-8">
+          <div class="thumb-toolbar" id="extract-toolbar">
+            <span class="thumb-status" id="extract-status">已選擷取 0 / 0 頁</span>
+            <button type="button" class="link-btn" id="extract-selectall">全選</button>
+            <button type="button" class="link-btn" id="extract-clearall">全部取消</button>
+          </div>
+          <div class="thumb-grid" id="extract-grid"></div>
         </div>
       </div>
 
@@ -622,29 +657,45 @@ document.getElementById("btn-jpg2pdf").addEventListener("click", async ()=>{
 // ===================== SPLIT / EXTRACT =====================
 let splitFile = null;
 let splitPdfDoc = null;
+let splitPdfJsDoc = null;
+let extractKeepSet = new Set();
+let extractThumbsBuilt = false;
+function resetExtractPreview(){
+  extractKeepSet = new Set();
+  extractThumbsBuilt = false;
+  document.getElementById("extract-grid").innerHTML = "";
+  document.getElementById("extract-toolbar").style.display = "none";
+  document.getElementById("extract-pages").value = "";
+}
 setupDropzone("dz-split","input-split", async files=>{
   if(files.length === 0) return;
   splitFile = files.find(f=>f.type==="application/pdf") || files[0];
   const ul = document.getElementById("list-split");
   ul.innerHTML = "";
+  resetExtractPreview();
   const statusEl = document.getElementById("status-split");
   statusEl.textContent = "讀取檔案中…"; statusEl.classList.remove("error");
   try{
     const bytes = await splitFile.arrayBuffer();
     splitPdfDoc = await PDFDocument.load(bytes);
+    const jsBytes = await splitFile.arrayBuffer();
+    splitPdfJsDoc = await pdfjsLib.getDocument({ data: jsBytes }).promise;
     const pageCount = splitPdfDoc.getPageCount();
     const li = document.createElement("li");
     li.innerHTML = `<span class="name">${splitFile.name}</span><span class="meta">共 ${pageCount} 頁 · ${fmtSize(splitFile.size)} · ${fmtDate(splitFile.lastModified)}</span>`;
     const rm = document.createElement("button");
     rm.className = "icon-btn remove"; rm.textContent = "✕";
-    rm.onclick = ()=>{ splitFile = null; splitPdfDoc = null; ul.innerHTML = ""; };
+    rm.onclick = ()=>{ splitFile = null; splitPdfDoc = null; splitPdfJsDoc = null; ul.innerHTML = ""; resetExtractPreview(); };
     li.appendChild(rm);
     ul.appendChild(li);
     statusEl.textContent = "";
+    if(document.querySelector('input[name="splitmode"]:checked').value === "extract"){
+      buildExtractPreview();
+    }
   } catch(err){
     statusEl.textContent = "無法讀取此 PDF：" + err.message;
     statusEl.classList.add("error");
-    splitFile = null; splitPdfDoc = null;
+    splitFile = null; splitPdfDoc = null; splitPdfJsDoc = null;
   }
 });
 document.querySelectorAll('input[name="splitmode"]').forEach(radio=>{
@@ -653,8 +704,111 @@ document.querySelectorAll('input[name="splitmode"]').forEach(radio=>{
     document.getElementById("field-every").style.display = mode === "every" ? "flex" : "none";
     document.getElementById("field-custom").style.display = mode === "custom" ? "flex" : "none";
     document.getElementById("field-extract").style.display = mode === "extract" ? "flex" : "none";
+    if(mode === "extract" && splitPdfJsDoc && !extractThumbsBuilt){
+      buildExtractPreview();
+    }
   });
 });
+
+// ---- 擷取頁面：縮圖預覽 ----
+function compressPagesToRangeString(pagesSet){
+  const sorted = [...pagesSet].sort((a,b)=>a-b);
+  const parts = [];
+  let start = null, prev = null;
+  for(const p of sorted){
+    if(start === null){ start = p; prev = p; continue; }
+    if(p === prev + 1){ prev = p; continue; }
+    parts.push(start === prev ? `${start}` : `${start}-${prev}`);
+    start = p; prev = p;
+  }
+  if(start !== null) parts.push(start === prev ? `${start}` : `${start}-${prev}`);
+  return parts.join(",");
+}
+function syncExtractTextFromKeepSet(){
+  document.getElementById("extract-pages").value = compressPagesToRangeString(extractKeepSet);
+}
+function updateExtractStatus(){
+  const maxPage = splitPdfJsDoc ? splitPdfJsDoc.numPages : 0;
+  document.getElementById("extract-status").textContent = `已選擷取 ${extractKeepSet.size} / ${maxPage} 頁`;
+}
+async function buildExtractPreview(){
+  const grid = document.getElementById("extract-grid");
+  const toolbar = document.getElementById("extract-toolbar");
+  if(!splitPdfJsDoc){ grid.innerHTML = ""; toolbar.style.display = "none"; return; }
+  const maxPage = splitPdfJsDoc.numPages;
+  const THUMB_LIMIT = 150;
+  if(maxPage > THUMB_LIMIT){
+    grid.innerHTML = `<div class="thumb-loading">此 PDF 共 ${maxPage} 頁，頁數較多已停用縮圖預覽以避免瀏覽器過慢，請直接在上方輸入頁碼。</div>`;
+    toolbar.style.display = "none";
+    return;
+  }
+  if(extractKeepSet.size === 0){
+    for(let i=1;i<=maxPage;i++) extractKeepSet.add(i);
+  }
+  toolbar.style.display = "flex";
+  grid.innerHTML = `<div class="thumb-loading">縮圖產生中…</div>`;
+  const frag = document.createDocumentFragment();
+  for(let i=1;i<=maxPage;i++){
+    const page = await splitPdfJsDoc.getPage(i);
+    const baseViewport = page.getViewport({ scale: 1 });
+    const scale = 110 / baseViewport.width;
+    const viewport = page.getViewport({ scale });
+    const canvas = document.createElement("canvas");
+    canvas.width = Math.ceil(viewport.width);
+    canvas.height = Math.ceil(viewport.height);
+    const ctx = canvas.getContext("2d");
+    await page.render({ canvasContext: ctx, viewport }).promise;
+    const div = document.createElement("div");
+    div.className = "thumb " + (extractKeepSet.has(i) ? "kept" : "removed");
+    div.dataset.page = i;
+    const label = document.createElement("span");
+    label.className = "pagenum"; label.textContent = i;
+    div.appendChild(canvas); div.appendChild(label);
+    div.addEventListener("click", ()=>{
+      if(extractKeepSet.has(i)){
+        extractKeepSet.delete(i); div.classList.remove("kept"); div.classList.add("removed");
+      } else {
+        extractKeepSet.add(i); div.classList.remove("removed"); div.classList.add("kept");
+      }
+      syncExtractTextFromKeepSet();
+      updateExtractStatus();
+    });
+    frag.appendChild(div);
+  }
+  grid.innerHTML = "";
+  grid.appendChild(frag);
+  syncExtractTextFromKeepSet();
+  updateExtractStatus();
+  extractThumbsBuilt = true;
+}
+document.getElementById("extract-pages").addEventListener("change", ()=>{
+  if(!splitPdfJsDoc || !extractThumbsBuilt) return;
+  const maxPage = splitPdfJsDoc.numPages;
+  try{
+    const pages = parsePageSpec(document.getElementById("extract-pages").value, maxPage);
+    extractKeepSet = new Set(pages);
+    document.querySelectorAll("#extract-grid .thumb").forEach(div=>{
+      const p = parseInt(div.dataset.page, 10);
+      if(extractKeepSet.has(p)){ div.classList.add("kept"); div.classList.remove("removed"); }
+      else { div.classList.remove("kept"); div.classList.add("removed"); }
+    });
+    updateExtractStatus();
+  } catch(err){
+    // 輸入尚未完整/有誤，暫不同步縮圖，送出時仍會驗證
+  }
+});
+document.getElementById("extract-selectall").addEventListener("click", ()=>{
+  if(!splitPdfJsDoc) return;
+  for(let i=1;i<=splitPdfJsDoc.numPages;i++) extractKeepSet.add(i);
+  document.querySelectorAll("#extract-grid .thumb").forEach(div=>{ div.classList.add("kept"); div.classList.remove("removed"); });
+  syncExtractTextFromKeepSet(); updateExtractStatus();
+});
+document.getElementById("extract-clearall").addEventListener("click", ()=>{
+  extractKeepSet.clear();
+  document.querySelectorAll("#extract-grid .thumb").forEach(div=>{ div.classList.remove("kept"); div.classList.add("removed"); });
+  syncExtractTextFromKeepSet(); updateExtractStatus();
+});
+
 document.getElementById("btn-split").addEventListener("click", async ()=>{
   const statusEl = document.getElementById("status-split");
   const resultsEl = document.getElementById("results-split");

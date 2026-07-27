@@ -316,6 +316,11 @@ function fmtSize(bytes){
   if(bytes < 1024*1024) return (bytes/1024).toFixed(1) + " KB";
   return (bytes/1024/1024).toFixed(2) + " MB";
 }
+function fmtDate(ts){
+  const d = new Date(ts);
+  const pad = n=>String(n).padStart(2,"0");
+  return `${d.getFullYear()}/${pad(d.getMonth()+1)}/${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}`;
+}
 function downloadBlob(blob, filename){
   const url = URL.createObjectURL(blob);
   const a = document.createElement("a");
@@ -358,7 +363,7 @@ function renderDraggableList(ul, files, opts){
 
     const metaSpan = document.createElement("span");
     metaSpan.className = "meta";
-    metaSpan.textContent = opts.meta ? opts.meta(file) : fmtSize(file.size);
+    metaSpan.textContent = opts.meta ? opts.meta(file) : `${fmtSize(file.size)} · ${fmtDate(file.lastModified)}`;
 
     const reorder = document.createElement("span");
     reorder.className = "reorder";
@@ -629,7 +634,7 @@ setupDropzone("dz-split","input-split", async files=>{
     splitPdfDoc = await PDFDocument.load(bytes);
     const pageCount = splitPdfDoc.getPageCount();
     const li = document.createElement("li");
-    li.innerHTML = `<span class="name">${splitFile.name}</span><span class="meta">共 ${pageCount} 頁 · ${fmtSize(splitFile.size)}</span>`;
+    li.innerHTML = `<span class="name">${splitFile.name}</span><span class="meta">共 ${pageCount} 頁 · ${fmtSize(splitFile.size)} · ${fmtDate(splitFile.lastModified)}</span>`;
     const rm = document.createElement("button");
     rm.className = "icon-btn remove"; rm.textContent = "✕";
     rm.onclick = ()=>{ splitFile = null; splitPdfDoc = null; ul.innerHTML = ""; };

@@ -123,11 +123,13 @@
   footer.note{margin-top:28px; font-size:12px; color:var(--muted); text-align:center; line-height:1.6;}
 
   .thumb-toolbar{display:none; align-items:center; gap:10px; margin-top:10px; flex-wrap:wrap;}
-  .thumb-toolbar button.link-btn{
+  button.link-btn{
     appearance:none; border:1px solid var(--border); background:var(--surface); border-radius:6px;
-    padding:5px 10px; font-size:12px; color:var(--ink); cursor:pointer;
+    padding:5px 10px; font-size:12px; color:var(--ink); cursor:pointer; font-family:var(--sans);
   }
-  .thumb-toolbar button.link-btn:hover{border-color:var(--muted);}
+  button.link-btn:hover{border-color:var(--muted);}
+  button.link-btn:disabled{opacity:.4; cursor:not-allowed;}
+  .list-actions{display:flex; justify-content:flex-end; margin-top:8px;}
   .thumb-status{font-size:12px; color:var(--muted); font-family:var(--mono);}
   .thumb-grid{
     display:grid; grid-template-columns:repeat(auto-fill, minmax(96px,1fr)); gap:10px;
@@ -150,6 +152,28 @@
     font-size:26px; color:var(--warn); font-weight:700;
   }
   .thumb-loading{font-size:12.5px; color:var(--muted); padding:10px 6px; grid-column:1/-1;}
+
+  .preview-grid{
+    display:grid; grid-template-columns:repeat(auto-fill, minmax(200px,1fr)); gap:14px; margin-top:16px;
+  }
+  .preview-card{
+    border:1px solid var(--border); border-radius:8px; overflow:hidden; background:var(--surface);
+    display:flex; flex-direction:column;
+  }
+  .preview-card img, .preview-card canvas{width:100%; display:block; background:#F0EFE9;}
+  .preview-card .pc-footer{
+    display:flex; align-items:center; justify-content:space-between; gap:8px;
+    padding:8px 10px; font-size:12px; border-top:1px solid var(--border);
+  }
+  .preview-card .pc-footer .pc-label{
+    color:var(--muted); font-family:var(--mono); font-size:11px; overflow:hidden;
+    text-overflow:ellipsis; white-space:nowrap;
+  }
+  .preview-card .pc-footer button{
+    appearance:none; border:1px solid var(--accent); background:var(--accent-bg); color:var(--accent-ink);
+    border-radius:6px; padding:4px 10px; font-size:11.5px; cursor:pointer; font-weight:600; flex:0 0 auto;
+  }
+  .preview-card .pc-footer button:hover{background:#DCEBE7;}
 </style>
 </head>
 <body>
@@ -165,29 +189,38 @@
     </svg>
     <div>
       <h1>PDF 工具箱</h1>
-      <p>PDF ⇄ JPG 轉檔・頁面分割與擷取</p>
+      <p>PDF ⇄ 圖片 轉檔・頁面分割與擷取</p>
     </div>
   </header>
 
   <nav class="tabs">
-    <button class="active" data-tab="pdf2jpg">PDF → JPG</button>
+    <button class="active" data-tab="pdf2jpg">PDF → 圖片</button>
+    <button data-tab="tiff">PDF → TIFF</button>
     <button data-tab="merge">PDF 合併</button>
     <button data-tab="jpg2pdf">JPG → PDF</button>
     <button data-tab="split">分割 / 擷取頁面</button>
   </nav>
 
-  <!-- ===================== PDF -> JPG ===================== -->
+  <!-- ===================== PDF -> JPG/PNG ===================== -->
   <section class="panel active" id="panel-pdf2jpg">
     <div class="card">
       <h2>上傳 PDF 檔案</h2>
-      <p class="hint">可一次選取多個 PDF（批次），或單一檔案。每一頁會輸出成一張 JPG。</p>
+      <p class="hint">可一次選取多個 PDF（批次），或單一檔案。每一頁會輸出成一張圖片。</p>
       <div class="dropzone" id="dz-pdf2jpg">
         <p><strong>點擊選擇檔案</strong> 或拖曳 PDF 到此處</p>
         <input type="file" id="input-pdf2jpg" accept="application/pdf" multiple>
       </div>
       <ul class="filelist" id="list-pdf2jpg"></ul>
+      <div class="list-actions"><button type="button" class="link-btn" id="clearfiles-pdf2jpg">清除全部檔案</button></div>
 
       <div class="row">
+        <div class="field">
+          <label for="output-format">輸出格式</label>
+          <select id="output-format">
+            <option value="jpeg" selected>JPG（檔案較小）</option>
+            <option value="png">PNG（無損畫質，文字較清晰）</option>
+          </select>
+        </div>
         <div class="field">
           <label for="dpi-select">輸出解析度</label>
           <select id="dpi-select">
@@ -196,7 +229,7 @@
             <option value="4.17">高（列印品質，約 300 DPI）</option>
           </select>
         </div>
-        <div class="field">
+        <div class="field" id="field-jpg-quality">
           <label for="jpg-quality">JPG 壓縮品質</label>
           <select id="jpg-quality">
             <option value="0.7">標準</option>
@@ -208,10 +241,59 @@
 
       <div class="actions">
         <button class="primary" id="btn-pdf2jpg">開始轉換</button>
+        <button type="button" class="link-btn" id="clearresults-pdf2jpg" disabled>清除結果</button>
         <span class="status" id="status-pdf2jpg"></span>
       </div>
       <div class="progress" id="progress-pdf2jpg"><div></div></div>
       <div class="results" id="results-pdf2jpg"></div>
+      <div class="preview-grid" id="preview-pdf2jpg"></div>
+    </div>
+  </section>
+
+  <!-- ===================== PDF -> TIFF ===================== -->
+  <section class="panel" id="panel-tiff">
+    <div class="card">
+      <h2>上傳 PDF 檔案</h2>
+      <p class="hint">可一次選取多個 PDF（批次）。每個 PDF 的所有頁面會合併成一個多頁 TIFF 檔；多個 PDF 會各自輸出一個 TIFF，並打包成 ZIP。</p>
+      <div class="dropzone" id="dz-tiff">
+        <p><strong>點擊選擇檔案</strong> 或拖曳 PDF 到此處</p>
+        <input type="file" id="input-tiff" accept="application/pdf" multiple>
+      </div>
+      <ul class="filelist" id="list-tiff"></ul>
+      <div class="list-actions"><button type="button" class="link-btn" id="clearfiles-tiff">清除全部檔案</button></div>
+
+      <div class="row">
+        <div class="field">
+          <label for="tiff-dpi-select">輸出解析度</label>
+          <select id="tiff-dpi-select">
+            <option value="1">低（約 72 DPI）</option>
+            <option value="2.08" selected>中（約 150 DPI）</option>
+            <option value="4.17">高（約 300 DPI）</option>
+          </select>
+        </div>
+        <div class="field">
+          <label for="tiff-compression">壓縮方式</label>
+          <select id="tiff-compression">
+            <option value="deflate" selected>Deflate 壓縮（建議，檔案較小）</option>
+            <option value="none">不壓縮（相容性最高，檔案較大）</option>
+          </select>
+        </div>
+        <div class="field">
+          <label style="visibility:hidden;">色彩</label>
+          <label style="display:flex; align-items:center; gap:6px; font-size:13px; color:var(--ink); cursor:pointer;">
+            <input type="checkbox" id="tiff-grayscale"> 轉為灰階（可再縮小檔案）
+          </label>
+        </div>
+      </div>
+
+      <div class="actions">
+        <button class="primary" id="btn-tiff">開始轉換</button>
+        <button type="button" class="link-btn" id="clearresults-tiff" disabled>清除結果</button>
+        <span class="status" id="status-tiff"></span>
+      </div>
+      <div class="progress" id="progress-tiff"><div></div></div>
+      <div class="results" id="results-tiff"></div>
+      <div class="preview-grid" id="preview-tiff"></div>
     </div>
   </section>
 
@@ -225,9 +307,11 @@
         <input type="file" id="input-merge" accept="application/pdf" multiple>
       </div>
       <ul class="filelist" id="list-merge"></ul>
+      <div class="list-actions"><button type="button" class="link-btn" id="clearfiles-merge">清除全部檔案</button></div>
 
       <div class="actions">
         <button class="primary" id="btn-merge">開始合併</button>
+        <button type="button" class="link-btn" id="clearresults-merge" disabled>清除結果</button>
         <span class="status" id="status-merge"></span>
       </div>
       <div class="progress" id="progress-merge"><div></div></div>
@@ -245,6 +329,7 @@
         <input type="file" id="input-jpg2pdf" accept="image/jpeg,image/png" multiple>
       </div>
       <ul class="filelist" id="list-jpg2pdf"></ul>
+      <div class="list-actions"><button type="button" class="link-btn" id="clearfiles-jpg2pdf">清除全部檔案</button></div>
 
       <div class="row">
         <div class="field" style="flex:1 1 100%;">
@@ -260,10 +345,12 @@
 
       <div class="actions">
         <button class="primary" id="btn-jpg2pdf">開始轉換</button>
+        <button type="button" class="link-btn" id="clearresults-jpg2pdf" disabled>清除結果</button>
         <span class="status" id="status-jpg2pdf"></span>
       </div>
       <div class="progress" id="progress-jpg2pdf"><div></div></div>
       <div class="results" id="results-jpg2pdf"></div>
+      <div class="preview-grid" id="preview-jpg2pdf"></div>
     </div>
   </section>
 
@@ -321,6 +408,7 @@
 
       <div class="actions">
         <button class="primary" id="btn-split">開始處理</button>
+        <button type="button" class="link-btn" id="clearresults-split" disabled>清除結果</button>
         <span class="status" id="status-split"></span>
       </div>
       <div class="progress" id="progress-split"><div></div></div>
@@ -369,6 +457,57 @@ function addResultLink(container, blob, filename){
   a.href = url; a.download = filename;
   a.innerHTML = `<span>下載 ${filename}</span><span class="sz">${fmtSize(blob.size)}</span>`;
   container.appendChild(a);
+}
+function revokeResultLinks(container){
+  // 結果連結使用 URL.createObjectURL 建立，離開畫面前務必釋放，避免分頁跑越久記憶體越漲
+  container.querySelectorAll("a[href^='blob:']").forEach(a=>{
+    try{ URL.revokeObjectURL(a.href); }catch(e){ /* ignore */ }
+  });
+}
+function clearResultsArea(resultsEl, previewEl, statusEl, clearBtn){
+  revokeResultLinks(resultsEl);
+  resultsEl.innerHTML = "";
+  if(previewEl) previewEl.innerHTML = "";
+  if(statusEl){ statusEl.textContent = ""; statusEl.classList.remove("error"); }
+  if(clearBtn) clearBtn.disabled = true;
+}
+async function makePreviewCard(blob, labelText, download){
+  const card = document.createElement("div");
+  card.className = "preview-card";
+  try{
+    const bitmap = await createImageBitmap(blob);
+    const maxW = 260;
+    const scale = Math.min(1, maxW / bitmap.width);
+    const canvas = document.createElement("canvas");
+    canvas.width = Math.max(1, Math.round(bitmap.width * scale));
+    canvas.height = Math.max(1, Math.round(bitmap.height * scale));
+    canvas.style.width = "100%";
+    canvas.style.display = "block";
+    canvas.style.background = "#F0EFE9";
+    const ctx = canvas.getContext("2d");
+    ctx.drawImage(bitmap, 0, 0, canvas.width, canvas.height);
+    if(bitmap.close) bitmap.close();
+    card.appendChild(canvas);
+  } catch(err){
+    console.error("預覽產生失敗：", err);
+    const fallback = document.createElement("div");
+    fallback.style.cssText = "padding:20px;text-align:center;font-size:12px;color:var(--muted);";
+    fallback.textContent = "（無法顯示預覽）";
+    card.appendChild(fallback);
+  }
+  const footer = document.createElement("div");
+  footer.className = "pc-footer";
+  const label = document.createElement("span");
+  label.className = "pc-label"; label.textContent = labelText; label.title = labelText;
+  footer.appendChild(label);
+  if(download){
+    const dlBtn = document.createElement("button");
+    dlBtn.textContent = "單張下載";
+    dlBtn.onclick = ()=>downloadBlob(download.blob, download.filename);
+    footer.appendChild(dlBtn);
+  }
+  card.appendChild(footer);
+  return card;
 }
 function setupDropzone(dzId, inputId, onFiles){
   const dz = document.getElementById(dzId);
@@ -486,22 +625,37 @@ function parsePageSpec(str, maxPage){
   return pages;
 }
 
-// ===================== PDF -> JPG =====================
+// ===================== PDF -> JPG/PNG =====================
 let pdf2jpgFiles = [];
+document.getElementById("output-format").addEventListener("change", ()=>{
+  const isPng = document.getElementById("output-format").value === "png";
+  document.getElementById("field-jpg-quality").style.display = isPng ? "none" : "flex";
+});
 setupDropzone("dz-pdf2jpg","input-pdf2jpg", files=>{
   pdf2jpgFiles = pdf2jpgFiles.concat(files.filter(f=>f.type==="application/pdf"));
   renderDraggableList(document.getElementById("list-pdf2jpg"), pdf2jpgFiles, {});
 });
+document.getElementById("clearfiles-pdf2jpg").addEventListener("click", ()=>{
+  pdf2jpgFiles.length = 0;
+  renderDraggableList(document.getElementById("list-pdf2jpg"), pdf2jpgFiles, {});
+});
+document.getElementById("clearresults-pdf2jpg").addEventListener("click", ()=>{
+  clearResultsArea(document.getElementById("results-pdf2jpg"), document.getElementById("preview-pdf2jpg"), document.getElementById("status-pdf2jpg"), document.getElementById("clearresults-pdf2jpg"));
+});
 document.getElementById("btn-pdf2jpg").addEventListener("click", async ()=>{
   const statusEl = document.getElementById("status-pdf2jpg");
   const resultsEl = document.getElementById("results-pdf2jpg");
+  const previewEl = document.getElementById("preview-pdf2jpg");
   const progressWrap = document.getElementById("progress-pdf2jpg");
   const progressBar = progressWrap.querySelector("div");
-  resultsEl.innerHTML = ""; statusEl.textContent = ""; statusEl.classList.remove("error");
+  clearResultsArea(resultsEl, previewEl, statusEl);
   if(pdf2jpgFiles.length === 0){ statusEl.textContent = "請先上傳至少一個 PDF 檔案"; statusEl.classList.add("error"); return; }
 
+  const outputFormat = document.getElementById("output-format").value; // "jpeg" | "png"
   const scale = parseFloat(document.getElementById("dpi-select").value);
   const quality = parseFloat(document.getElementById("jpg-quality").value);
+  const ext = outputFormat === "png" ? "png" : "jpg";
+  const mime = outputFormat === "png" ? "image/png" : "image/jpeg";
   const btn = document.getElementById("btn-pdf2jpg");
   btn.disabled = true; progressWrap.classList.add("show"); progressBar.style.width = "0%";
 
@@ -526,9 +680,12 @@ document.getElementById("btn-pdf2jpg").addEventListener("click", async ()=>{
         canvas.height = Math.ceil(viewport.height);
         const ctx = canvas.getContext("2d");
         await page.render({ canvasContext: ctx, viewport }).promise;
-        const blob = await new Promise(res=>canvas.toBlob(res, "image/jpeg", quality));
+        const blob = await new Promise(res=>{
+          if(outputFormat === "png") canvas.toBlob(res, mime);
+          else canvas.toBlob(res, mime, quality);
+        });
         const pageLabel = pdf.numPages > 1 ? `_p${String(i).padStart(2,"0")}` : "";
-        outputs.push({ filename: `${base}${pageLabel}.jpg`, blob });
+        outputs.push({ filename: `${base}${pageLabel}.${ext}`, blob, pageNum: i, sourceName: file.name });
         donePages++;
         progressBar.style.width = Math.round((donePages/totalPages)*100) + "%";
       }
@@ -540,7 +697,12 @@ document.getElementById("btn-pdf2jpg").addEventListener("click", async ()=>{
       const zip = new JSZip();
       outputs.forEach(o=>zip.file(o.filename, o.blob));
       const zipBlob = await zip.generateAsync({ type: "blob" });
-      addResultLink(resultsEl, zipBlob, "converted_jpgs.zip");
+      addResultLink(resultsEl, zipBlob, "converted_images.zip");
+    }
+    for(const o of outputs){
+      const label = outputs.length > docs.length ? `第 ${o.pageNum} 頁` : o.filename;
+      const card = await makePreviewCard(o.blob, label, { blob: o.blob, filename: o.filename });
+      previewEl.appendChild(card);
     }
     statusEl.textContent = `完成，共輸出 ${outputs.length} 張圖片`;
   } catch(err){
@@ -549,6 +711,206 @@ document.getElementById("btn-pdf2jpg").addEventListener("click", async ()=>{
     statusEl.classList.add("error");
   } finally {
     btn.disabled = false; progressWrap.classList.remove("show");
+    document.getElementById("clearresults-pdf2jpg").disabled = resultsEl.children.length === 0;
+  }
+});
+
+// ===================== PDF -> TIFF =====================
+let tiffFiles = [];
+setupDropzone("dz-tiff","input-tiff", files=>{
+  tiffFiles = tiffFiles.concat(files.filter(f=>f.type==="application/pdf"));
+  renderDraggableList(document.getElementById("list-tiff"), tiffFiles, {});
+});
+document.getElementById("clearfiles-tiff").addEventListener("click", ()=>{
+  tiffFiles.length = 0;
+  renderDraggableList(document.getElementById("list-tiff"), tiffFiles, {});
+});
+document.getElementById("clearresults-tiff").addEventListener("click", ()=>{
+  clearResultsArea(document.getElementById("results-tiff"), document.getElementById("preview-tiff"), document.getElementById("status-tiff"), document.getElementById("clearresults-tiff"));
+});
+
+async function deflateBytes(bytes){
+  const cs = new CompressionStream("deflate");
+  const writer = cs.writable.getWriter();
+  writer.write(bytes);
+  writer.close();
+  const compressed = await new Response(cs.readable).arrayBuffer();
+  return new Uint8Array(compressed);
+}
+
+async function renderPdfPageToPixels(pdf, pageNum, scale, grayscale){
+  const page = await pdf.getPage(pageNum);
+  const viewport = page.getViewport({ scale });
+  const canvas = document.createElement("canvas");
+  canvas.width = Math.ceil(viewport.width);
+  canvas.height = Math.ceil(viewport.height);
+  const ctx = canvas.getContext("2d");
+  ctx.fillStyle = "#ffffff";
+  ctx.fillRect(0, 0, canvas.width, canvas.height);
+  await page.render({ canvasContext: ctx, viewport }).promise;
+  const previewBlob = await new Promise(res=>canvas.toBlob(res, "image/jpeg", 0.8));
+  const imgData = ctx.getImageData(0, 0, canvas.width, canvas.height).data;
+  const pixelCount = canvas.width * canvas.height;
+  const dpi = Math.round(scale * 72);
+  let bytes, samplesPerPixel;
+  if(grayscale){
+    bytes = new Uint8Array(pixelCount);
+    for(let i=0, j=0; i<pixelCount; i++, j+=4){
+      bytes[i] = Math.round(0.299*imgData[j] + 0.587*imgData[j+1] + 0.114*imgData[j+2]);
+    }
+    samplesPerPixel = 1;
+  } else {
+    bytes = new Uint8Array(pixelCount*3);
+    for(let i=0, j=0, k=0; i<pixelCount; i++, j+=4, k+=3){
+      bytes[k]=imgData[j]; bytes[k+1]=imgData[j+1]; bytes[k+2]=imgData[j+2];
+    }
+    samplesPerPixel = 3;
+  }
+  return { width: canvas.width, height: canvas.height, bytes, samplesPerPixel, dpi, previewBlob };
+}
+
+// 自製多頁 TIFF 封裝器：每頁一個 strip，選擇性以原生 CompressionStream 做 Deflate 壓縮
+async function encodeTiffPages(pageDatas, opts){
+  const useDeflate = opts.compression === "deflate";
+  const compressionCode = useDeflate ? 8 : 1;
+  const prepared = [];
+  for(const pd of pageDatas){
+    const strip = useDeflate ? await deflateBytes(pd.bytes) : pd.bytes;
+    prepared.push({ width: pd.width, height: pd.height, samplesPerPixel: pd.samplesPerPixel, dpi: pd.dpi, strip });
+  }
+  let cursor = 8;
+  const layout = [];
+  const ENTRY_COUNT = 12;
+  for(const p of prepared){
+    const L = { stripOffset: cursor };
+    cursor += p.strip.length;
+    if(cursor % 2 === 1) cursor += 1;
+    if(p.samplesPerPixel === 3){
+      L.bitsPerSampleOffset = cursor;
+      cursor += 6;
+      if(cursor % 2 === 1) cursor += 1;
+    }
+    L.xResOffset = cursor; cursor += 8;
+    L.yResOffset = cursor; cursor += 8;
+    L.ifdOffset = cursor;
+    cursor += 2 + ENTRY_COUNT*12 + 4;
+    layout.push(L);
+  }
+  const buf = new ArrayBuffer(cursor);
+  const view = new DataView(buf);
+  const bytes = new Uint8Array(buf);
+
+  view.setUint8(0, 0x49); view.setUint8(1, 0x49); // "II" little-endian
+  view.setUint16(2, 42, true);
+  view.setUint32(4, layout[0].ifdOffset, true);
+
+  for(let i=0;i<prepared.length;i++){
+    const p = prepared[i];
+    const L = layout[i];
+    bytes.set(p.strip, L.stripOffset);
+    if(p.samplesPerPixel === 3){
+      view.setUint16(L.bitsPerSampleOffset, 8, true);
+      view.setUint16(L.bitsPerSampleOffset+2, 8, true);
+      view.setUint16(L.bitsPerSampleOffset+4, 8, true);
+    }
+    view.setUint32(L.xResOffset, p.dpi || 96, true);
+    view.setUint32(L.xResOffset+4, 1, true);
+    view.setUint32(L.yResOffset, p.dpi || 96, true);
+    view.setUint32(L.yResOffset+4, 1, true);
+
+    let off = L.ifdOffset;
+    view.setUint16(off, ENTRY_COUNT, true); off += 2;
+    const writeEntry = (tag, type, count, val)=>{
+      view.setUint16(off, tag, true);
+      view.setUint16(off+2, type, true);
+      view.setUint32(off+4, count, true);
+      view.setUint32(off+8, val, true);
+      off += 12;
+    };
+    writeEntry(256, 4, 1, p.width);
+    writeEntry(257, 4, 1, p.height);
+    writeEntry(258, 3, p.samplesPerPixel, p.samplesPerPixel===1 ? 8 : L.bitsPerSampleOffset);
+    writeEntry(259, 3, 1, compressionCode);
+    writeEntry(262, 3, 1, p.samplesPerPixel===1 ? 1 : 2);
+    writeEntry(273, 4, 1, L.stripOffset);
+    writeEntry(277, 3, 1, p.samplesPerPixel);
+    writeEntry(278, 4, 1, p.height);
+    writeEntry(279, 4, 1, p.strip.length);
+    writeEntry(282, 5, 1, L.xResOffset);
+    writeEntry(283, 5, 1, L.yResOffset);
+    writeEntry(296, 3, 1, 2);
+    const nextIfd = (i < prepared.length-1) ? layout[i+1].ifdOffset : 0;
+    view.setUint32(off, nextIfd, true);
+  }
+  return new Blob([buf], { type: "image/tiff" });
+}
+
+document.getElementById("btn-tiff").addEventListener("click", async ()=>{
+  const statusEl = document.getElementById("status-tiff");
+  const resultsEl = document.getElementById("results-tiff");
+  const previewEl = document.getElementById("preview-tiff");
+  const progressWrap = document.getElementById("progress-tiff");
+  const progressBar = progressWrap.querySelector("div");
+  clearResultsArea(resultsEl, previewEl, statusEl);
+  if(tiffFiles.length === 0){ statusEl.textContent = "請先上傳至少一個 PDF 檔案"; statusEl.classList.add("error"); return; }
+
+  const scale = parseFloat(document.getElementById("tiff-dpi-select").value);
+  const compression = document.getElementById("tiff-compression").value;
+  const grayscale = document.getElementById("tiff-grayscale").checked;
+  if(compression === "deflate" && typeof CompressionStream === "undefined"){
+    statusEl.textContent = "此瀏覽器不支援壓縮功能，請改選「不壓縮」";
+    statusEl.classList.add("error");
+    return;
+  }
+
+  const btn = document.getElementById("btn-tiff");
+  btn.disabled = true; progressWrap.classList.add("show"); progressBar.style.width = "0%";
+
+  try{
+    const docs = [];
+    let totalPages = 0;
+    for(const file of tiffFiles){
+      const buf = await file.arrayBuffer();
+      const pdf = await pdfjsLib.getDocument({ data: buf }).promise;
+      docs.push({ file, pdf });
+      totalPages += pdf.numPages;
+    }
+    let donePages = 0;
+    const outputs = [];
+    for(const { file, pdf } of docs){
+      const base = file.name.replace(/\.pdf$/i, "");
+      const pageDatas = [];
+      for(let i=1;i<=pdf.numPages;i++){
+        statusEl.textContent = `轉換中：${file.name}（第 ${i}/${pdf.numPages} 頁）`;
+        pageDatas.push(await renderPdfPageToPixels(pdf, i, scale, grayscale));
+        donePages++;
+        progressBar.style.width = Math.round((donePages/totalPages)*100) + "%";
+      }
+      statusEl.textContent = `封裝 TIFF 中：${file.name}`;
+      const blob = await encodeTiffPages(pageDatas, { compression });
+      outputs.push({ filename: `${base}.tiff`, blob });
+      for(let idx=0; idx<pageDatas.length; idx++){
+        const card = await makePreviewCard(pageDatas[idx].previewBlob, `${file.name} － 第 ${idx+1} 頁`, null);
+        previewEl.appendChild(card);
+      }
+    }
+    if(outputs.length === 1){
+      addResultLink(resultsEl, outputs[0].blob, outputs[0].filename);
+    } else {
+      statusEl.textContent = "打包成 ZIP 中…";
+      const zip = new JSZip();
+      outputs.forEach(o=>zip.file(o.filename, o.blob));
+      const zipBlob = await zip.generateAsync({ type: "blob" });
+      addResultLink(resultsEl, zipBlob, "converted_tiffs.zip");
+    }
+    statusEl.textContent = `完成，共輸出 ${outputs.length} 個 TIFF 檔案`;
+  } catch(err){
+    console.error(err);
+    statusEl.textContent = "發生錯誤：" + err.message;
+    statusEl.classList.add("error");
+  } finally {
+    btn.disabled = false; progressWrap.classList.remove("show");
+    document.getElementById("clearresults-tiff").disabled = resultsEl.children.length === 0;
   }
 });
 
@@ -558,12 +920,19 @@ setupDropzone("dz-merge","input-merge", files=>{
   mergeFiles = mergeFiles.concat(files.filter(f=>f.type==="application/pdf"));
   renderDraggableList(document.getElementById("list-merge"), mergeFiles, {});
 });
+document.getElementById("clearfiles-merge").addEventListener("click", ()=>{
+  mergeFiles.length = 0;
+  renderDraggableList(document.getElementById("list-merge"), mergeFiles, {});
+});
+document.getElementById("clearresults-merge").addEventListener("click", ()=>{
+  clearResultsArea(document.getElementById("results-merge"), null, document.getElementById("status-merge"), document.getElementById("clearresults-merge"));
+});
 document.getElementById("btn-merge").addEventListener("click", async ()=>{
   const statusEl = document.getElementById("status-merge");
   const resultsEl = document.getElementById("results-merge");
   const progressWrap = document.getElementById("progress-merge");
   const progressBar = progressWrap.querySelector("div");
-  resultsEl.innerHTML = ""; statusEl.textContent = ""; statusEl.classList.remove("error");
+  clearResultsArea(resultsEl, null, statusEl);
   if(mergeFiles.length < 2){ statusEl.textContent = "請至少上傳兩個 PDF 檔案"; statusEl.classList.add("error"); return; }
 
   const btn = document.getElementById("btn-merge");
@@ -588,6 +957,7 @@ document.getElementById("btn-merge").addEventListener("click", async ()=>{
     statusEl.classList.add("error");
   } finally {
     btn.disabled = false; progressWrap.classList.remove("show");
+    document.getElementById("clearresults-merge").disabled = resultsEl.children.length === 0;
   }
 });
 
@@ -597,6 +967,13 @@ setupDropzone("dz-jpg2pdf","input-jpg2pdf", files=>{
   jpg2pdfFiles = jpg2pdfFiles.concat(files.filter(f=>/image\/(jpeg|png)/.test(f.type)));
   renderDraggableList(document.getElementById("list-jpg2pdf"), jpg2pdfFiles, {});
 });
+document.getElementById("clearfiles-jpg2pdf").addEventListener("click", ()=>{
+  jpg2pdfFiles.length = 0;
+  renderDraggableList(document.getElementById("list-jpg2pdf"), jpg2pdfFiles, {});
+});
+document.getElementById("clearresults-jpg2pdf").addEventListener("click", ()=>{
+  clearResultsArea(document.getElementById("results-jpg2pdf"), document.getElementById("preview-jpg2pdf"), document.getElementById("status-jpg2pdf"), document.getElementById("clearresults-jpg2pdf"));
+});
 async function embedImage(pdfDoc, file){
   const bytes = await file.arrayBuffer();
   if(file.type === "image/png") return await pdfDoc.embedPng(bytes);
@@ -605,9 +982,10 @@ async function embedImage(pdfDoc, file){
 document.getElementById("btn-jpg2pdf").addEventListener("click", async ()=>{
   const statusEl = document.getElementById("status-jpg2pdf");
   const resultsEl = document.getElementById("results-jpg2pdf");
+  const previewEl = document.getElementById("preview-jpg2pdf");
   const progressWrap = document.getElementById("progress-jpg2pdf");
   const progressBar = progressWrap.querySelector("div");
-  resultsEl.innerHTML = ""; statusEl.textContent = ""; statusEl.classList.remove("error");
+  clearResultsArea(resultsEl, previewEl, statusEl);
   if(jpg2pdfFiles.length === 0){ statusEl.textContent = "請先上傳至少一張圖片"; statusEl.classList.add("error"); return; }
 
   const mode = document.querySelector('input[name="jpgmode"]:checked').value;
@@ -626,6 +1004,11 @@ document.getElementById("btn-jpg2pdf").addEventListener("click", async ()=>{
       }
       const bytes = await pdfDoc.save();
       addResultLink(resultsEl, new Blob([bytes], { type: "application/pdf" }), "merged.pdf");
+      for(let idx=0; idx<jpg2pdfFiles.length; idx++){
+        const f = jpg2pdfFiles[idx];
+        const card = await makePreviewCard(f, `第 ${idx+1} 頁（${f.name}）`, null);
+        previewEl.appendChild(card);
+      }
       statusEl.textContent = `完成，共合併 ${jpg2pdfFiles.length} 張圖片為一份 PDF`;
     } else {
       const zip = new JSZip();
@@ -637,7 +1020,10 @@ document.getElementById("btn-jpg2pdf").addEventListener("click", async ()=>{
         page.drawImage(img, { x:0, y:0, width: img.width, height: img.height });
         const bytes = await pdfDoc.save();
         const base = jpg2pdfFiles[i].name.replace(/\.(jpe?g|png)$/i, "");
+        const singleBlob = new Blob([bytes], { type: "application/pdf" });
         zip.file(`${base}.pdf`, bytes);
+        const card = await makePreviewCard(jpg2pdfFiles[i], `${base}.pdf`, { blob: singleBlob, filename: `${base}.pdf` });
+        previewEl.appendChild(card);
         progressBar.style.width = Math.round(((i+1)/jpg2pdfFiles.length)*100) + "%";
       }
       statusEl.textContent = "打包成 ZIP 中…";
@@ -651,6 +1037,7 @@ document.getElementById("btn-jpg2pdf").addEventListener("click", async ()=>{
     statusEl.classList.add("error");
   } finally {
     btn.disabled = false; progressWrap.classList.remove("show");
+    document.getElementById("clearresults-jpg2pdf").disabled = resultsEl.children.length === 0;
   }
 });
 
@@ -696,6 +1083,20 @@ setupDropzone("dz-split","input-split", async files=>{
     statusEl.textContent = "無法讀取此 PDF：" + err.message;
     statusEl.classList.add("error");
     splitFile = null; splitPdfDoc = null; splitPdfJsDoc = null;
+  }
+});
+document.getElementById("clearresults-split").addEventListener("click", async ()=>{
+  clearResultsArea(document.getElementById("results-split"), null, document.getElementById("status-split"), document.getElementById("clearresults-split"));
+  resetExtractPreview();
+  const mode = document.querySelector('input[name="splitmode"]:checked').value;
+  if(splitPdfJsDoc && mode === "extract"){
+    await buildExtractPreview(); // 會先預設全選，接著手動清空選取，讓縮圖保留但回到「未選取」狀態
+    extractKeepSet.clear();
+    document.querySelectorAll("#extract-grid .thumb").forEach(div=>{
+      div.classList.remove("kept"); div.classList.add("removed");
+    });
+    syncExtractTextFromKeepSet();
+    updateExtractStatus();
   }
 });
 document.querySelectorAll('input[name="splitmode"]').forEach(radio=>{
@@ -814,7 +1215,7 @@ document.getElementById("btn-split").addEventListener("click", async ()=>{
   const resultsEl = document.getElementById("results-split");
   const progressWrap = document.getElementById("progress-split");
   const progressBar = progressWrap.querySelector("div");
-  resultsEl.innerHTML = ""; statusEl.textContent = ""; statusEl.classList.remove("error");
+  clearResultsArea(resultsEl, null, statusEl);
   if(!splitPdfDoc){ statusEl.textContent = "請先上傳一份 PDF 檔案"; statusEl.classList.add("error"); return; }
 
   const mode = document.querySelector('input[name="splitmode"]:checked').value;
@@ -876,6 +1277,7 @@ document.getElementById("btn-split").addEventListener("click", async ()=>{
     statusEl.classList.add("error");
   } finally {
     btn.disabled = false; progressWrap.classList.remove("show");
+    document.getElementById("clearresults-split").disabled = resultsEl.children.length === 0;
   }
 });
 </script>

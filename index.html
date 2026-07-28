@@ -153,6 +153,24 @@
   }
   .thumb-loading{font-size:12.5px; color:var(--muted); padding:10px 6px; grid-column:1/-1;}
 
+  .rotate-grid .rthumb{
+    position:relative; aspect-ratio:1; display:flex; align-items:center; justify-content:center;
+    border:2px solid transparent; border-radius:6px; background:var(--surface); overflow:hidden;
+    cursor:pointer; transition:border-color .12s;
+  }
+  .rotate-grid .rthumb:hover{border-color:var(--muted);}
+  .rotate-grid .rthumb.rotated{border-color:var(--accent);}
+  .rotate-grid .rthumb canvas{display:block; max-width:100%; max-height:100%; width:auto; height:auto; transition:transform .15s ease;}
+  .rotate-grid .rthumb .pagenum{
+    position:absolute; left:4px; bottom:4px; background:rgba(0,0,0,.6); color:#fff;
+    font-size:10px; font-family:var(--mono); padding:1px 5px; border-radius:3px;
+  }
+  .rotate-grid .rthumb .degbadge{
+    position:absolute; right:4px; top:4px; background:rgba(14,92,81,.92); color:#fff;
+    font-size:10px; font-family:var(--mono); padding:1px 5px; border-radius:3px; display:none;
+  }
+  .rotate-grid .rthumb.rotated .degbadge{display:block;}
+
   .preview-grid{
     display:grid; grid-template-columns:repeat(auto-fill, minmax(200px,1fr)); gap:14px; margin-top:16px;
   }
@@ -199,6 +217,7 @@
     <button data-tab="merge">PDF 合併</button>
     <button data-tab="jpg2pdf">JPG → PDF</button>
     <button data-tab="split">分割 / 擷取頁面</button>
+    <button data-tab="rotate">旋轉頁面</button>
   </nav>
 
   <!-- ===================== PDF -> JPG/PNG ===================== -->
@@ -416,12 +435,41 @@
     </div>
   </section>
 
+  <!-- ===================== ROTATE ===================== -->
+  <section class="panel" id="panel-rotate">
+    <div class="card">
+      <h2>上傳 PDF 檔案</h2>
+      <p class="hint">請上傳單一 PDF。點擊縮圖可將該頁順時針旋轉 90°（再點會繼續轉到 180°、270°、還原）；也可用下方按鈕批次調整全部頁面。旋轉僅調整頁面顯示方向，不會重新繪製內容，也不影響文字或畫質。</p>
+      <div class="dropzone" id="dz-rotate">
+        <p><strong>點擊選擇檔案</strong> 或拖曳單一 PDF 到此處</p>
+        <input type="file" id="input-rotate" accept="application/pdf">
+      </div>
+      <ul class="filelist" id="list-rotate"></ul>
+
+      <div class="thumb-toolbar" id="rotate-toolbar">
+        <span class="thumb-status" id="rotate-status">共 0 頁</span>
+        <button type="button" class="link-btn" id="rotate-all-cw">全部順時針 90°</button>
+        <button type="button" class="link-btn" id="rotate-all-ccw">全部逆時針 90°</button>
+        <button type="button" class="link-btn" id="rotate-all-reset">全部重設</button>
+      </div>
+      <div class="thumb-grid rotate-grid" id="rotate-grid"></div>
+
+      <div class="actions">
+        <button class="primary" id="btn-rotate">套用旋轉並下載</button>
+        <button type="button" class="link-btn" id="clearresults-rotate" disabled>清除結果</button>
+        <span class="status" id="status-rotate"></span>
+      </div>
+      <div class="progress" id="progress-rotate"><div></div></div>
+      <div class="results" id="results-rotate"></div>
+    </div>
+  </section>
+
   <footer class="note">所有轉換都在您的瀏覽器內完成，檔案不會上傳到任何伺服器。</footer>
 </div>
 
 <script>
 pdfjsLib.GlobalWorkerOptions.workerSrc = "https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js";
-const { PDFDocument } = PDFLib;
+const { PDFDocument, degrees } = PDFLib;
 
 // ---------- tab switching ----------
 document.querySelectorAll("nav.tabs button").forEach(btn=>{
@@ -1278,6 +1326,176 @@ document.getElementById("btn-split").addEventListener("click", async ()=>{
   } finally {
     btn.disabled = false; progressWrap.classList.remove("show");
     document.getElementById("clearresults-split").disabled = resultsEl.children.length === 0;
+  }
+});
+
+// ===================== 旋轉頁面 =====================
+let rotateFile = null;
+let rotatePdfDoc = null;
+let rotatePdfJsDoc = null;
+let rotateDeltas = []; // 每頁的旋轉增量（0/90/180/270），疊加在原始頁面既有旋轉之上
+
+function resetRotateState(){
+  rotateFile = null; rotatePdfDoc = null; rotatePdfJsDoc = null; rotateDeltas = [];
+  document.getElementById("rotate-grid").innerHTML = "";
+  document.getElementById("rotate-toolbar").style.display = "none";
+  document.getElementById("list-rotate").innerHTML = "";
+}
+
+setupDropzone("dz-rotate","input-rotate", async files=>{
+  if(files.length === 0) return;
+  const file = files.find(f=>f.type==="application/pdf") || files[0];
+  resetRotateState();
+  rotateFile = file;
+  const ul = document.getElementById("list-rotate");
+  const statusEl = document.getElementById("status-rotate");
+  clearResultsArea(document.getElementById("results-rotate"), null, statusEl, document.getElementById("clearresults-rotate"));
+  statusEl.textContent = "讀取檔案中…"; statusEl.classList.remove("error");
+  try{
+    const bytes = await file.arrayBuffer();
+    rotatePdfDoc = await PDFDocument.load(bytes);
+    const jsBytes = await file.arrayBuffer();
+    rotatePdfJsDoc = await pdfjsLib.getDocument({ data: jsBytes }).promise;
+    const pageCount = rotatePdfDoc.getPageCount();
+    rotateDeltas = new Array(pageCount).fill(0);
+    const li = document.createElement("li");
+    li.innerHTML = `<span class="name">${file.name}</span><span class="meta">共 ${pageCount} 頁 · ${fmtSize(file.size)} · ${fmtDate(file.lastModified)}</span>`;
+    const rm = document.createElement("button");
+    rm.className = "icon-btn remove"; rm.textContent = "✕"; rm.title = "移除";
+    rm.onclick = ()=>{ resetRotateState(); };
+    li.appendChild(rm);
+    ul.appendChild(li);
+    statusEl.textContent = "";
+    await buildRotatePreview();
+  } catch(err){
+    statusEl.textContent = "無法讀取此 PDF：" + err.message;
+    statusEl.classList.add("error");
+    rotateFile = null; rotatePdfDoc = null; rotatePdfJsDoc = null;
+  }
+});
+
+function updateRotateStatus(){
+  const n = rotateDeltas.length;
+  const rotatedCount = rotateDeltas.filter(d=>d !== 0).length;
+  document.getElementById("rotate-status").textContent = `共 ${n} 頁，已調整 ${rotatedCount} 頁`;
+}
+
+async function buildRotatePreview(){
+  const grid = document.getElementById("rotate-grid");
+  const toolbar = document.getElementById("rotate-toolbar");
+  if(!rotatePdfJsDoc){ grid.innerHTML = ""; toolbar.style.display = "none"; return; }
+  const maxPage = rotatePdfJsDoc.numPages;
+  const THUMB_LIMIT = 150;
+  if(maxPage > THUMB_LIMIT){
+    grid.innerHTML = `<div class="thumb-loading">此 PDF 共 ${maxPage} 頁，頁數較多已停用縮圖預覽，暫不支援逐頁旋轉，請改用頁數較少的檔案。</div>`;
+    toolbar.style.display = "none";
+    return;
+  }
+  toolbar.style.display = "flex";
+  grid.innerHTML = `<div class="thumb-loading">縮圖產生中…</div>`;
+  const CELL = 104;
+  const frag = document.createDocumentFragment();
+  for(let i=1;i<=maxPage;i++){
+    const page = await rotatePdfJsDoc.getPage(i);
+    const baseViewport = page.getViewport({ scale: 1 });
+    const scale = Math.min(CELL / baseViewport.width, CELL / baseViewport.height);
+    const viewport = page.getViewport({ scale });
+    const canvas = document.createElement("canvas");
+    canvas.width = Math.ceil(viewport.width);
+    canvas.height = Math.ceil(viewport.height);
+    const ctx = canvas.getContext("2d");
+    await page.render({ canvasContext: ctx, viewport }).promise;
+
+    const div = document.createElement("div");
+    div.className = "rthumb";
+    div.dataset.index = i - 1;
+    canvas.style.transform = `rotate(${rotateDeltas[i-1]}deg)`;
+    const label = document.createElement("span");
+    label.className = "pagenum"; label.textContent = i;
+    const badge = document.createElement("span");
+    badge.className = "degbadge"; badge.textContent = rotateDeltas[i-1] + "°";
+    div.appendChild(canvas); div.appendChild(label); div.appendChild(badge);
+    div.title = "點擊順時針旋轉 90°";
+    div.addEventListener("click", ()=>{
+      const idx = i - 1;
+      rotateDeltas[idx] = (rotateDeltas[idx] + 90) % 360;
+      canvas.style.transform = `rotate(${rotateDeltas[idx]}deg)`;
+      badge.textContent = rotateDeltas[idx] + "°";
+      div.classList.toggle("rotated", rotateDeltas[idx] !== 0);
+      updateRotateStatus();
+    });
+    frag.appendChild(div);
+  }
+  grid.innerHTML = "";
+  grid.appendChild(frag);
+  updateRotateStatus();
+}
+
+function syncRotateThumbsFromDeltas(){
+  document.querySelectorAll("#rotate-grid .rthumb").forEach(div=>{
+    const idx = parseInt(div.dataset.index, 10);
+    const canvas = div.querySelector("canvas");
+    const badge = div.querySelector(".degbadge");
+    canvas.style.transform = `rotate(${rotateDeltas[idx]}deg)`;
+    badge.textContent = rotateDeltas[idx] + "°";
+    div.classList.toggle("rotated", rotateDeltas[idx] !== 0);
+  });
+  updateRotateStatus();
+}
+
+document.getElementById("rotate-all-cw").addEventListener("click", ()=>{
+  if(!rotatePdfJsDoc) return;
+  rotateDeltas = rotateDeltas.map(d=>(d+90)%360);
+  syncRotateThumbsFromDeltas();
+});
+document.getElementById("rotate-all-ccw").addEventListener("click", ()=>{
+  if(!rotatePdfJsDoc) return;
+  rotateDeltas = rotateDeltas.map(d=>(d+270)%360);
+  syncRotateThumbsFromDeltas();
+});
+document.getElementById("rotate-all-reset").addEventListener("click", ()=>{
+  if(!rotatePdfJsDoc) return;
+  rotateDeltas = rotateDeltas.map(()=>0);
+  syncRotateThumbsFromDeltas();
+});
+
+document.getElementById("clearresults-rotate").addEventListener("click", ()=>{
+  clearResultsArea(document.getElementById("results-rotate"), null, document.getElementById("status-rotate"), document.getElementById("clearresults-rotate"));
+});
+
+document.getElementById("btn-rotate").addEventListener("click", async ()=>{
+  const statusEl = document.getElementById("status-rotate");
+  const resultsEl = document.getElementById("results-rotate");
+  const progressWrap = document.getElementById("progress-rotate");
+  const progressBar = progressWrap.querySelector("div");
+  clearResultsArea(resultsEl, null, statusEl);
+  if(!rotatePdfDoc){ statusEl.textContent = "請先上傳一份 PDF 檔案"; statusEl.classList.add("error"); return; }
+
+  const btn = document.getElementById("btn-rotate");
+  btn.disabled = true; progressWrap.classList.add("show"); progressBar.style.width = "0%";
+  try{
+    const pages = rotatePdfDoc.getPages();
+    pages.forEach((page, idx)=>{
+      const delta = rotateDeltas[idx] || 0;
+      if(delta !== 0){
+        const current = page.getRotation().angle;
+        const newAngle = ((current + delta) % 360 + 360) % 360;
+        page.setRotation(degrees(newAngle));
+      }
+      progressBar.style.width = Math.round(((idx+1)/pages.length)*100) + "%";
+    });
+    const bytes = await rotatePdfDoc.save();
+    const base = rotateFile.name.replace(/\.pdf$/i, "");
+    addResultLink(resultsEl, new Blob([bytes], { type: "application/pdf" }), `${base}_rotated.pdf`);
+    const rotatedCount = rotateDeltas.filter(d=>d!==0).length;
+    statusEl.textContent = `完成，共調整 ${rotatedCount} / ${pages.length} 頁`;
+  } catch(err){
+    console.error(err);
+    statusEl.textContent = "發生錯誤：" + err.message;
+    statusEl.classList.add("error");
+  } finally {
+    btn.disabled = false; progressWrap.classList.remove("show");
+    document.getElementById("clearresults-rotate").disabled = resultsEl.children.length === 0;
   }
 });
 </script>

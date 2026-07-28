@@ -132,26 +132,46 @@
   .list-actions{display:flex; justify-content:flex-end; margin-top:8px;}
   .thumb-status{font-size:12px; color:var(--muted); font-family:var(--mono);}
   .thumb-grid{
-    display:grid; grid-template-columns:repeat(auto-fill, minmax(96px,1fr)); gap:10px;
-    margin-top:12px; max-height:420px; overflow-y:auto; padding:8px;
+    display:grid; grid-template-columns:repeat(auto-fill, minmax(168px,1fr)); gap:14px;
+    margin-top:12px; max-height:640px; overflow-y:auto; padding:8px;
     border:1px solid var(--border); border-radius:8px; background:var(--paper);
   }
   .thumb{
     position:relative; cursor:pointer; border:2px solid transparent; border-radius:6px;
     overflow:hidden; background:var(--surface); transition:border-color .12s, opacity .12s;
+    display:flex; align-items:center; justify-content:center;
   }
-  .thumb canvas{display:block; width:100%; height:auto;}
+  .thumb canvas{display:block; width:100%; height:auto; transition:transform .15s ease;}
   .thumb .pagenum{
     position:absolute; left:4px; bottom:4px; background:rgba(0,0,0,.6); color:#fff;
-    font-size:10px; font-family:var(--mono); padding:1px 5px; border-radius:3px;
+    font-size:10px; font-family:var(--mono); padding:1px 5px; border-radius:3px; z-index:2;
   }
   .thumb.kept{border-color:var(--accent);}
   .thumb.removed{opacity:.35;}
   .thumb.removed::after{
     content:"✕"; position:absolute; inset:0; display:flex; align-items:center; justify-content:center;
-    font-size:26px; color:var(--warn); font-weight:700;
+    font-size:26px; color:var(--warn); font-weight:700; z-index:1;
   }
   .thumb-loading{font-size:12.5px; color:var(--muted); padding:10px 6px; grid-column:1/-1;}
+
+  /* 通用：縮圖右上角旋轉鈕 + 角度徽章（輸入階段逐頁旋轉） */
+  .thumb .rot-btn{
+    position:absolute; top:4px; right:4px; z-index:3; width:22px; height:22px; padding:0;
+    border:none; border-radius:50%; background:rgba(27,27,24,.62); color:#fff;
+    font-size:13px; line-height:1; cursor:pointer; display:flex; align-items:center; justify-content:center;
+    transition:background .12s ease;
+  }
+  .thumb .rot-btn:hover{background:rgba(14,92,81,.92);}
+  .thumb .degbadge{
+    position:absolute; left:4px; top:4px; z-index:2; background:rgba(14,92,81,.92); color:#fff;
+    font-size:10px; font-family:var(--mono); padding:1px 5px; border-radius:3px; display:none;
+  }
+  .thumb.deg-rotated .degbadge{display:block;}
+  .thumb-group-label{
+    grid-column:1/-1; font-size:12px; font-weight:600; color:var(--ink);
+    padding:6px 2px 2px; border-top:1px solid var(--border); margin-top:4px;
+  }
+  .thumb-group-label:first-child{border-top:none; margin-top:0;}
 
   .rotate-grid .rthumb{
     position:relative; aspect-ratio:1; display:flex; align-items:center; justify-content:center;
@@ -232,6 +252,15 @@
       <ul class="filelist" id="list-pdf2jpg"></ul>
       <div class="list-actions"><button type="button" class="link-btn" id="clearfiles-pdf2jpg">清除全部檔案</button></div>
 
+      <p class="hint" id="pdf2jpg-rotate-hint" style="display:none; margin-top:0;">縮圖依檔案分組顯示，點縮圖右上角 ⟳ 或用下方工具列可逐頁旋轉，旋轉會直接反映在輸出的圖片上。</p>
+      <div class="thumb-toolbar" id="pdf2jpg-rotate-toolbar">
+        <span class="thumb-status" id="pdf2jpg-rotate-status">共 0 頁</span>
+        <button type="button" class="link-btn" id="pdf2jpg-rotate-all-cw">全部順時針 90°</button>
+        <button type="button" class="link-btn" id="pdf2jpg-rotate-all-ccw">全部逆時針 90°</button>
+        <button type="button" class="link-btn" id="pdf2jpg-rotate-all-reset">全部重設</button>
+      </div>
+      <div class="thumb-grid" id="pdf2jpg-grid"></div>
+
       <div class="row">
         <div class="field">
           <label for="output-format">輸出格式</label>
@@ -281,6 +310,15 @@
       <ul class="filelist" id="list-tiff"></ul>
       <div class="list-actions"><button type="button" class="link-btn" id="clearfiles-tiff">清除全部檔案</button></div>
 
+      <p class="hint" id="tiff-rotate-hint" style="display:none; margin-top:0;">縮圖依檔案分組顯示，點縮圖右上角 ⟳ 或用下方工具列可逐頁旋轉，旋轉套用在渲染成 TIFF 之前的畫布上。</p>
+      <div class="thumb-toolbar" id="tiff-rotate-toolbar">
+        <span class="thumb-status" id="tiff-rotate-status">共 0 頁</span>
+        <button type="button" class="link-btn" id="tiff-rotate-all-cw">全部順時針 90°</button>
+        <button type="button" class="link-btn" id="tiff-rotate-all-ccw">全部逆時針 90°</button>
+        <button type="button" class="link-btn" id="tiff-rotate-all-reset">全部重設</button>
+      </div>
+      <div class="thumb-grid" id="tiff-grid"></div>
+
       <div class="row">
         <div class="field">
           <label for="tiff-dpi-select">輸出解析度</label>
@@ -328,6 +366,15 @@
       <ul class="filelist" id="list-merge"></ul>
       <div class="list-actions"><button type="button" class="link-btn" id="clearfiles-merge">清除全部檔案</button></div>
 
+      <p class="hint" id="merge-rotate-hint" style="display:none; margin-top:0;">縮圖依來源檔案分組顯示，可對合併前每個檔案的每一頁分別旋轉，旋轉會套用到合併後的頁面。</p>
+      <div class="thumb-toolbar" id="merge-rotate-toolbar">
+        <span class="thumb-status" id="merge-rotate-status">共 0 頁</span>
+        <button type="button" class="link-btn" id="merge-rotate-all-cw">全部順時針 90°</button>
+        <button type="button" class="link-btn" id="merge-rotate-all-ccw">全部逆時針 90°</button>
+        <button type="button" class="link-btn" id="merge-rotate-all-reset">全部重設</button>
+      </div>
+      <div class="thumb-grid" id="merge-grid"></div>
+
       <div class="actions">
         <button class="primary" id="btn-merge">開始合併</button>
         <button type="button" class="link-btn" id="clearresults-merge" disabled>清除結果</button>
@@ -349,6 +396,15 @@
       </div>
       <ul class="filelist" id="list-jpg2pdf"></ul>
       <div class="list-actions"><button type="button" class="link-btn" id="clearfiles-jpg2pdf">清除全部檔案</button></div>
+
+      <p class="hint" id="jpg2pdf-rotate-hint" style="display:none; margin-top:0;">每張圖片各為一頁，點縮圖右上角 ⟳ 或用下方工具列可個別旋轉；旋轉會實際重繪像素後再嵌入 PDF（90°/270° 時寬高會互換）。</p>
+      <div class="thumb-toolbar" id="jpg2pdf-rotate-toolbar">
+        <span class="thumb-status" id="jpg2pdf-rotate-status">共 0 張</span>
+        <button type="button" class="link-btn" id="jpg2pdf-rotate-all-cw">全部順時針 90°</button>
+        <button type="button" class="link-btn" id="jpg2pdf-rotate-all-ccw">全部逆時針 90°</button>
+        <button type="button" class="link-btn" id="jpg2pdf-rotate-all-reset">全部重設</button>
+      </div>
+      <div class="thumb-grid" id="jpg2pdf-grid"></div>
 
       <div class="row">
         <div class="field" style="flex:1 1 100%;">
@@ -421,9 +477,17 @@
             <button type="button" class="link-btn" id="extract-selectall">全選</button>
             <button type="button" class="link-btn" id="extract-clearall">全部取消</button>
           </div>
-          <div class="thumb-grid" id="extract-grid"></div>
         </div>
       </div>
+
+      <p class="hint" id="split-rotate-hint" style="display:none; margin-top:-4px;">下方縮圖可個別旋轉頁面，設定對「固定頁數、自訂範圍、擷取指定頁面」三種模式的輸出都會生效；擷取模式下點縮圖仍可切換保留 / 捨棄，與旋轉鈕互不干擾。</p>
+      <div class="thumb-toolbar" id="split-rotate-toolbar">
+        <span class="thumb-status" id="split-rotate-status">共 0 頁</span>
+        <button type="button" class="link-btn" id="extract-rotate-all-cw">全部順時針 90°</button>
+        <button type="button" class="link-btn" id="extract-rotate-all-ccw">全部逆時針 90°</button>
+        <button type="button" class="link-btn" id="extract-rotate-all-reset">全部重設</button>
+      </div>
+      <div class="thumb-grid" id="extract-grid"></div>
 
       <div class="actions">
         <button class="primary" id="btn-split">開始處理</button>
@@ -673,19 +737,127 @@ function parsePageSpec(str, maxPage){
   return pages;
 }
 
+// ===================== 共用：依檔案分組的縮圖旋轉網格（輸入階段逐頁旋轉） =====================
+function createGroupedRotateGrid({ gridId, toolbarId, hintId, statusId, cwId, ccwId, resetId, getFiles, unitLabel }){
+  const docCache = new Map(); // File -> pdfjsDoc
+  const rotCache = new Map(); // File -> rotation array（每頁的旋轉增量）
+  const THUMB_LIMIT = 150;
+  const unit = unitLabel || "頁";
+  async function ensureDoc(file){
+    let doc = docCache.get(file);
+    if(!doc){
+      const buf = await file.arrayBuffer();
+      doc = await pdfjsLib.getDocument({ data: buf }).promise;
+      docCache.set(file, doc);
+    }
+    let rot = rotCache.get(file);
+    if(!rot || rot.length !== doc.numPages){
+      rot = new Array(doc.numPages).fill(0);
+      rotCache.set(file, rot);
+    }
+    return doc;
+  }
+  function pruneRemoved(files){
+    const set = new Set(files);
+    for(const f of [...docCache.keys()]) if(!set.has(f)){ docCache.delete(f); rotCache.delete(f); }
+  }
+  function updateStatus(){
+    let total = 0, rotated = 0;
+    for(const rot of rotCache.values()){ total += rot.length; rotated += rot.filter(d=>d!==0).length; }
+    document.getElementById(statusId).textContent = `共 ${total} ${unit}，已調整 ${rotated} ${unit}`;
+  }
+  async function rebuild(){
+    const files = getFiles();
+    const grid = document.getElementById(gridId);
+    const toolbar = document.getElementById(toolbarId);
+    const hint = document.getElementById(hintId);
+    pruneRemoved(files);
+    if(files.length === 0){ grid.innerHTML = ""; toolbar.style.display = "none"; hint.style.display = "none"; return; }
+    grid.innerHTML = `<div class="thumb-loading">縮圖產生中…</div>`;
+    let pageSum = 0;
+    for(const file of files){
+      try{ const doc = await ensureDoc(file); pageSum += doc.numPages; } catch(e){ /* 略過無法讀取的檔案 */ }
+    }
+    if(pageSum > THUMB_LIMIT){
+      grid.innerHTML = `<div class="thumb-loading">總計 ${pageSum} ${unit}，數量較多已停用縮圖預覽，暫不支援逐頁旋轉。</div>`;
+      toolbar.style.display = "none"; hint.style.display = "none";
+      return;
+    }
+    toolbar.style.display = "flex"; hint.style.display = "block";
+    const frag = document.createDocumentFragment();
+    for(const file of files){
+      const doc = docCache.get(file);
+      if(!doc) continue;
+      const rot = rotCache.get(file);
+      const glabel = document.createElement("div");
+      glabel.className = "thumb-group-label";
+      glabel.textContent = `${file.name}（共 ${doc.numPages} ${unit}）`;
+      frag.appendChild(glabel);
+      for(let i=1;i<=doc.numPages;i++){
+        const page = await doc.getPage(i);
+        const baseVp = page.getViewport({ scale: 1 });
+        const scale = 160 / Math.max(baseVp.width, baseVp.height);
+        const viewport = page.getViewport({ scale });
+        const canvas = document.createElement("canvas");
+        canvas.width = Math.ceil(viewport.width); canvas.height = Math.ceil(viewport.height);
+        await page.render({ canvasContext: canvas.getContext("2d"), viewport }).promise;
+        const div = document.createElement("div");
+        div.className = "thumb kept";
+        canvas.style.transform = `rotate(${rot[i-1]}deg)`;
+        const pnum = document.createElement("span"); pnum.className = "pagenum"; pnum.textContent = i;
+        const badge = document.createElement("span"); badge.className = "degbadge"; badge.textContent = rot[i-1] + "°";
+        const rotBtn = document.createElement("button");
+        rotBtn.type = "button"; rotBtn.className = "rot-btn"; rotBtn.title = "旋轉此頁 90°"; rotBtn.textContent = "⟳";
+        rotBtn.addEventListener("click", (e)=>{
+          e.stopPropagation();
+          rot[i-1] = (rot[i-1] + 90) % 360;
+          canvas.style.transform = `rotate(${rot[i-1]}deg)`;
+          badge.textContent = rot[i-1] + "°";
+          div.classList.toggle("deg-rotated", rot[i-1] !== 0);
+          updateStatus();
+        });
+        div.classList.toggle("deg-rotated", rot[i-1] !== 0);
+        div.appendChild(canvas); div.appendChild(pnum); div.appendChild(badge); div.appendChild(rotBtn);
+        frag.appendChild(div);
+      }
+    }
+    grid.innerHTML = "";
+    grid.appendChild(frag);
+    updateStatus();
+  }
+  function rotateAll(delta){
+    for(const rot of rotCache.values()) for(let i=0;i<rot.length;i++) rot[i] = ((rot[i] + delta) % 360 + 360) % 360;
+    rebuild();
+  }
+  document.getElementById(cwId).addEventListener("click", ()=>rotateAll(90));
+  document.getElementById(ccwId).addEventListener("click", ()=>rotateAll(270));
+  document.getElementById(resetId).addEventListener("click", ()=>{
+    for(const rot of rotCache.values()) rot.fill(0);
+    rebuild();
+  });
+  return { rebuild, rotCache, docCache, ensureDoc };
+}
+
 // ===================== PDF -> JPG/PNG =====================
 let pdf2jpgFiles = [];
+const pdf2jpgGrid = createGroupedRotateGrid({
+  gridId: "pdf2jpg-grid", toolbarId: "pdf2jpg-rotate-toolbar", hintId: "pdf2jpg-rotate-hint",
+  statusId: "pdf2jpg-rotate-status", cwId: "pdf2jpg-rotate-all-cw", ccwId: "pdf2jpg-rotate-all-ccw",
+  resetId: "pdf2jpg-rotate-all-reset", getFiles: ()=>pdf2jpgFiles, unitLabel: "頁"
+});
 document.getElementById("output-format").addEventListener("change", ()=>{
   const isPng = document.getElementById("output-format").value === "png";
   document.getElementById("field-jpg-quality").style.display = isPng ? "none" : "flex";
 });
 setupDropzone("dz-pdf2jpg","input-pdf2jpg", files=>{
   pdf2jpgFiles = pdf2jpgFiles.concat(files.filter(f=>f.type==="application/pdf"));
-  renderDraggableList(document.getElementById("list-pdf2jpg"), pdf2jpgFiles, {});
+  renderDraggableList(document.getElementById("list-pdf2jpg"), pdf2jpgFiles, { onChange: ()=>pdf2jpgGrid.rebuild() });
+  pdf2jpgGrid.rebuild();
 });
 document.getElementById("clearfiles-pdf2jpg").addEventListener("click", ()=>{
   pdf2jpgFiles.length = 0;
-  renderDraggableList(document.getElementById("list-pdf2jpg"), pdf2jpgFiles, {});
+  renderDraggableList(document.getElementById("list-pdf2jpg"), pdf2jpgFiles, { onChange: ()=>pdf2jpgGrid.rebuild() });
+  pdf2jpgGrid.rebuild();
 });
 document.getElementById("clearresults-pdf2jpg").addEventListener("click", ()=>{
   clearResultsArea(document.getElementById("results-pdf2jpg"), document.getElementById("preview-pdf2jpg"), document.getElementById("status-pdf2jpg"), document.getElementById("clearresults-pdf2jpg"));
@@ -712,17 +884,18 @@ document.getElementById("btn-pdf2jpg").addEventListener("click", async ()=>{
     let totalPages = 0, donePages = 0;
     const docs = [];
     for(const file of pdf2jpgFiles){
-      const buf = await file.arrayBuffer();
-      const pdf = await pdfjsLib.getDocument({ data: buf }).promise;
-      docs.push({ file, pdf });
+      const pdf = await pdf2jpgGrid.ensureDoc(file);
+      docs.push({ file, pdf, rot: pdf2jpgGrid.rotCache.get(file) });
       totalPages += pdf.numPages;
     }
-    for(const {file, pdf} of docs){
+    for(const {file, pdf, rot} of docs){
       const base = file.name.replace(/\.pdf$/i, "");
       for(let i=1; i<=pdf.numPages; i++){
         statusEl.textContent = `轉換中：${file.name}（第 ${i}/${pdf.numPages} 頁）`;
         const page = await pdf.getPage(i);
-        const viewport = page.getViewport({ scale });
+        const delta = (rot && rot[i-1]) || 0;
+        const rotation = ((page.rotate + delta) % 360 + 360) % 360;
+        const viewport = page.getViewport({ scale, rotation });
         const canvas = document.createElement("canvas");
         canvas.width = Math.ceil(viewport.width);
         canvas.height = Math.ceil(viewport.height);
@@ -765,13 +938,20 @@ document.getElementById("btn-pdf2jpg").addEventListener("click", async ()=>{
 
 // ===================== PDF -> TIFF =====================
 let tiffFiles = [];
+const tiffGrid = createGroupedRotateGrid({
+  gridId: "tiff-grid", toolbarId: "tiff-rotate-toolbar", hintId: "tiff-rotate-hint",
+  statusId: "tiff-rotate-status", cwId: "tiff-rotate-all-cw", ccwId: "tiff-rotate-all-ccw",
+  resetId: "tiff-rotate-all-reset", getFiles: ()=>tiffFiles, unitLabel: "頁"
+});
 setupDropzone("dz-tiff","input-tiff", files=>{
   tiffFiles = tiffFiles.concat(files.filter(f=>f.type==="application/pdf"));
-  renderDraggableList(document.getElementById("list-tiff"), tiffFiles, {});
+  renderDraggableList(document.getElementById("list-tiff"), tiffFiles, { onChange: ()=>tiffGrid.rebuild() });
+  tiffGrid.rebuild();
 });
 document.getElementById("clearfiles-tiff").addEventListener("click", ()=>{
   tiffFiles.length = 0;
-  renderDraggableList(document.getElementById("list-tiff"), tiffFiles, {});
+  renderDraggableList(document.getElementById("list-tiff"), tiffFiles, { onChange: ()=>tiffGrid.rebuild() });
+  tiffGrid.rebuild();
 });
 document.getElementById("clearresults-tiff").addEventListener("click", ()=>{
   clearResultsArea(document.getElementById("results-tiff"), document.getElementById("preview-tiff"), document.getElementById("status-tiff"), document.getElementById("clearresults-tiff"));
@@ -786,9 +966,10 @@ async function deflateBytes(bytes){
   return new Uint8Array(compressed);
 }
 
-async function renderPdfPageToPixels(pdf, pageNum, scale, grayscale){
+async function renderPdfPageToPixels(pdf, pageNum, scale, grayscale, rotationDelta){
   const page = await pdf.getPage(pageNum);
-  const viewport = page.getViewport({ scale });
+  const rotation = ((page.rotate + (rotationDelta||0)) % 360 + 360) % 360;
+  const viewport = page.getViewport({ scale, rotation });
   const canvas = document.createElement("canvas");
   canvas.width = Math.ceil(viewport.width);
   canvas.height = Math.ceil(viewport.height);
@@ -918,19 +1099,18 @@ document.getElementById("btn-tiff").addEventListener("click", async ()=>{
     const docs = [];
     let totalPages = 0;
     for(const file of tiffFiles){
-      const buf = await file.arrayBuffer();
-      const pdf = await pdfjsLib.getDocument({ data: buf }).promise;
-      docs.push({ file, pdf });
+      const pdf = await tiffGrid.ensureDoc(file);
+      docs.push({ file, pdf, rot: tiffGrid.rotCache.get(file) });
       totalPages += pdf.numPages;
     }
     let donePages = 0;
     const outputs = [];
-    for(const { file, pdf } of docs){
+    for(const { file, pdf, rot } of docs){
       const base = file.name.replace(/\.pdf$/i, "");
       const pageDatas = [];
       for(let i=1;i<=pdf.numPages;i++){
         statusEl.textContent = `轉換中：${file.name}（第 ${i}/${pdf.numPages} 頁）`;
-        pageDatas.push(await renderPdfPageToPixels(pdf, i, scale, grayscale));
+        pageDatas.push(await renderPdfPageToPixels(pdf, i, scale, grayscale, (rot && rot[i-1]) || 0));
         donePages++;
         progressBar.style.width = Math.round((donePages/totalPages)*100) + "%";
       }
@@ -964,13 +1144,20 @@ document.getElementById("btn-tiff").addEventListener("click", async ()=>{
 
 // ===================== PDF 合併 =====================
 let mergeFiles = [];
+const mergeGrid = createGroupedRotateGrid({
+  gridId: "merge-grid", toolbarId: "merge-rotate-toolbar", hintId: "merge-rotate-hint",
+  statusId: "merge-rotate-status", cwId: "merge-rotate-all-cw", ccwId: "merge-rotate-all-ccw",
+  resetId: "merge-rotate-all-reset", getFiles: ()=>mergeFiles, unitLabel: "頁"
+});
 setupDropzone("dz-merge","input-merge", files=>{
   mergeFiles = mergeFiles.concat(files.filter(f=>f.type==="application/pdf"));
-  renderDraggableList(document.getElementById("list-merge"), mergeFiles, {});
+  renderDraggableList(document.getElementById("list-merge"), mergeFiles, { onChange: ()=>mergeGrid.rebuild() });
+  mergeGrid.rebuild();
 });
 document.getElementById("clearfiles-merge").addEventListener("click", ()=>{
   mergeFiles.length = 0;
-  renderDraggableList(document.getElementById("list-merge"), mergeFiles, {});
+  renderDraggableList(document.getElementById("list-merge"), mergeFiles, { onChange: ()=>mergeGrid.rebuild() });
+  mergeGrid.rebuild();
 });
 document.getElementById("clearresults-merge").addEventListener("click", ()=>{
   clearResultsArea(document.getElementById("results-merge"), null, document.getElementById("status-merge"), document.getElementById("clearresults-merge"));
@@ -992,8 +1179,17 @@ document.getElementById("btn-merge").addEventListener("click", async ()=>{
       statusEl.textContent = `合併中：${mergeFiles[i].name}（${i+1}/${mergeFiles.length}）`;
       const bytes = await mergeFiles[i].arrayBuffer();
       const srcDoc = await PDFDocument.load(bytes);
+      const rot = mergeGrid.rotCache.get(mergeFiles[i]);
       const copied = await mergedDoc.copyPages(srcDoc, srcDoc.getPageIndices());
-      copied.forEach(p=>mergedDoc.addPage(p));
+      copied.forEach((p, pageIdx)=>{
+        mergedDoc.addPage(p);
+        const delta = (rot && rot[pageIdx]) || 0;
+        if(delta !== 0){
+          const current = p.getRotation().angle;
+          const newAngle = ((current + delta) % 360 + 360) % 360;
+          p.setRotation(degrees(newAngle));
+        }
+      });
       progressBar.style.width = Math.round(((i+1)/mergeFiles.length)*100) + "%";
     }
     const bytes = await mergedDoc.save();
@@ -1011,21 +1207,103 @@ document.getElementById("btn-merge").addEventListener("click", async ()=>{
 
 // ===================== JPG -> PDF =====================
 let jpg2pdfFiles = [];
+const jpg2pdfRotations = new Map(); // File -> 旋轉角度（0/90/180/270）
+async function buildJpg2pdfGrid(){
+  const grid = document.getElementById("jpg2pdf-grid");
+  const toolbar = document.getElementById("jpg2pdf-rotate-toolbar");
+  const hint = document.getElementById("jpg2pdf-rotate-hint");
+  const set = new Set(jpg2pdfFiles);
+  for(const f of [...jpg2pdfRotations.keys()]) if(!set.has(f)) jpg2pdfRotations.delete(f);
+  if(jpg2pdfFiles.length === 0){ grid.innerHTML = ""; toolbar.style.display = "none"; hint.style.display = "none"; return; }
+  toolbar.style.display = "flex"; hint.style.display = "block";
+  const frag = document.createDocumentFragment();
+  for(const file of jpg2pdfFiles){
+    if(!jpg2pdfRotations.has(file)) jpg2pdfRotations.set(file, 0);
+    const deg = jpg2pdfRotations.get(file);
+    const url = URL.createObjectURL(file);
+    const div = document.createElement("div");
+    div.className = "thumb kept";
+    const img = document.createElement("img");
+    img.src = url; img.style.width = "100%"; img.style.height = "auto"; img.style.display = "block";
+    img.style.transform = `rotate(${deg}deg)`;
+    img.addEventListener("load", ()=>URL.revokeObjectURL(url), { once: true });
+    const badge = document.createElement("span"); badge.className = "degbadge"; badge.textContent = deg + "°";
+    const rotBtn = document.createElement("button");
+    rotBtn.type = "button"; rotBtn.className = "rot-btn"; rotBtn.title = "旋轉此圖 90°"; rotBtn.textContent = "⟳";
+    rotBtn.addEventListener("click", (e)=>{
+      e.stopPropagation();
+      const nd = (jpg2pdfRotations.get(file) + 90) % 360;
+      jpg2pdfRotations.set(file, nd);
+      img.style.transform = `rotate(${nd}deg)`;
+      badge.textContent = nd + "°";
+      div.classList.toggle("deg-rotated", nd !== 0);
+      updateJpg2pdfRotStatus();
+    });
+    div.classList.toggle("deg-rotated", deg !== 0);
+    div.appendChild(img); div.appendChild(badge); div.appendChild(rotBtn);
+    frag.appendChild(div);
+  }
+  grid.innerHTML = "";
+  grid.appendChild(frag);
+  updateJpg2pdfRotStatus();
+}
+function updateJpg2pdfRotStatus(){
+  let rotated = 0;
+  for(const d of jpg2pdfRotations.values()) if(d !== 0) rotated++;
+  document.getElementById("jpg2pdf-rotate-status").textContent = `共 ${jpg2pdfFiles.length} 張，已調整 ${rotated} 張`;
+}
+document.getElementById("jpg2pdf-rotate-all-cw").addEventListener("click", ()=>{
+  jpg2pdfFiles.forEach(f=>jpg2pdfRotations.set(f, ((jpg2pdfRotations.get(f)||0) + 90) % 360));
+  buildJpg2pdfGrid();
+});
+document.getElementById("jpg2pdf-rotate-all-ccw").addEventListener("click", ()=>{
+  jpg2pdfFiles.forEach(f=>jpg2pdfRotations.set(f, ((jpg2pdfRotations.get(f)||0) + 270) % 360));
+  buildJpg2pdfGrid();
+});
+document.getElementById("jpg2pdf-rotate-all-reset").addEventListener("click", ()=>{
+  jpg2pdfFiles.forEach(f=>jpg2pdfRotations.set(f, 0));
+  buildJpg2pdfGrid();
+});
 setupDropzone("dz-jpg2pdf","input-jpg2pdf", files=>{
   jpg2pdfFiles = jpg2pdfFiles.concat(files.filter(f=>/image\/(jpeg|png)/.test(f.type)));
-  renderDraggableList(document.getElementById("list-jpg2pdf"), jpg2pdfFiles, {});
+  renderDraggableList(document.getElementById("list-jpg2pdf"), jpg2pdfFiles, { onChange: ()=>buildJpg2pdfGrid() });
+  buildJpg2pdfGrid();
 });
 document.getElementById("clearfiles-jpg2pdf").addEventListener("click", ()=>{
   jpg2pdfFiles.length = 0;
-  renderDraggableList(document.getElementById("list-jpg2pdf"), jpg2pdfFiles, {});
+  renderDraggableList(document.getElementById("list-jpg2pdf"), jpg2pdfFiles, { onChange: ()=>buildJpg2pdfGrid() });
+  buildJpg2pdfGrid();
 });
 document.getElementById("clearresults-jpg2pdf").addEventListener("click", ()=>{
   clearResultsArea(document.getElementById("results-jpg2pdf"), document.getElementById("preview-jpg2pdf"), document.getElementById("status-jpg2pdf"), document.getElementById("clearresults-jpg2pdf"));
 });
-async function embedImage(pdfDoc, file){
-  const bytes = await file.arrayBuffer();
+// 因為 JPG/PNG 本身沒有「頁面旋轉」中繼資料，這裡實際把像素重新繪製旋轉後再輸出（90°/270° 時寬高互換）
+async function rotateImageBytes(file, deg){
+  const bitmap = await createImageBitmap(file);
+  const swapped = (deg === 90 || deg === 270);
+  const w = swapped ? bitmap.height : bitmap.width;
+  const h = swapped ? bitmap.width : bitmap.height;
+  const canvas = document.createElement("canvas");
+  canvas.width = w; canvas.height = h;
+  const ctx = canvas.getContext("2d");
+  ctx.translate(w/2, h/2);
+  ctx.rotate(deg * Math.PI / 180);
+  ctx.drawImage(bitmap, -bitmap.width/2, -bitmap.height/2);
+  const mime = file.type === "image/png" ? "image/png" : "image/jpeg";
+  const blob = await new Promise(res=> mime === "image/png" ? canvas.toBlob(res, mime) : canvas.toBlob(res, mime, 0.92));
+  return await blob.arrayBuffer();
+}
+async function embedImage(pdfDoc, file, deg){
+  const bytes = deg ? await rotateImageBytes(file, deg) : await file.arrayBuffer();
   if(file.type === "image/png") return await pdfDoc.embedPng(bytes);
   return await pdfDoc.embedJpg(bytes);
+}
+// 預覽卡片要跟輸出結果一致，若有旋轉就用旋轉後的像素產生預覽用 blob
+async function getPreviewBlob(file, deg){
+  if(!deg) return file;
+  const bytes = await rotateImageBytes(file, deg);
+  const mime = file.type === "image/png" ? "image/png" : "image/jpeg";
+  return new Blob([bytes], { type: mime });
 }
 document.getElementById("btn-jpg2pdf").addEventListener("click", async ()=>{
   const statusEl = document.getElementById("status-jpg2pdf");
@@ -1045,7 +1323,7 @@ document.getElementById("btn-jpg2pdf").addEventListener("click", async ()=>{
       const pdfDoc = await PDFDocument.create();
       for(let i=0;i<jpg2pdfFiles.length;i++){
         statusEl.textContent = `處理中：${jpg2pdfFiles[i].name}`;
-        const img = await embedImage(pdfDoc, jpg2pdfFiles[i]);
+        const img = await embedImage(pdfDoc, jpg2pdfFiles[i], jpg2pdfRotations.get(jpg2pdfFiles[i]) || 0);
         const page = pdfDoc.addPage([img.width, img.height]);
         page.drawImage(img, { x:0, y:0, width: img.width, height: img.height });
         progressBar.style.width = Math.round(((i+1)/jpg2pdfFiles.length)*100) + "%";
@@ -1054,7 +1332,7 @@ document.getElementById("btn-jpg2pdf").addEventListener("click", async ()=>{
       addResultLink(resultsEl, new Blob([bytes], { type: "application/pdf" }), "merged.pdf");
       for(let idx=0; idx<jpg2pdfFiles.length; idx++){
         const f = jpg2pdfFiles[idx];
-        const card = await makePreviewCard(f, `第 ${idx+1} 頁（${f.name}）`, null);
+        const card = await makePreviewCard(await getPreviewBlob(f, jpg2pdfRotations.get(f) || 0), `第 ${idx+1} 頁（${f.name}）`, null);
         previewEl.appendChild(card);
       }
       statusEl.textContent = `完成，共合併 ${jpg2pdfFiles.length} 張圖片為一份 PDF`;
@@ -1063,14 +1341,14 @@ document.getElementById("btn-jpg2pdf").addEventListener("click", async ()=>{
       for(let i=0;i<jpg2pdfFiles.length;i++){
         statusEl.textContent = `處理中：${jpg2pdfFiles[i].name}`;
         const pdfDoc = await PDFDocument.create();
-        const img = await embedImage(pdfDoc, jpg2pdfFiles[i]);
+        const img = await embedImage(pdfDoc, jpg2pdfFiles[i], jpg2pdfRotations.get(jpg2pdfFiles[i]) || 0);
         const page = pdfDoc.addPage([img.width, img.height]);
         page.drawImage(img, { x:0, y:0, width: img.width, height: img.height });
         const bytes = await pdfDoc.save();
         const base = jpg2pdfFiles[i].name.replace(/\.(jpe?g|png)$/i, "");
         const singleBlob = new Blob([bytes], { type: "application/pdf" });
         zip.file(`${base}.pdf`, bytes);
-        const card = await makePreviewCard(jpg2pdfFiles[i], `${base}.pdf`, { blob: singleBlob, filename: `${base}.pdf` });
+        const card = await makePreviewCard(await getPreviewBlob(jpg2pdfFiles[i], jpg2pdfRotations.get(jpg2pdfFiles[i]) || 0), `${base}.pdf`, { blob: singleBlob, filename: `${base}.pdf` });
         previewEl.appendChild(card);
         progressBar.style.width = Math.round(((i+1)/jpg2pdfFiles.length)*100) + "%";
       }
@@ -1094,12 +1372,16 @@ let splitFile = null;
 let splitPdfDoc = null;
 let splitPdfJsDoc = null;
 let extractKeepSet = new Set();
+let extractRotations = []; // 每頁的旋轉增量（0/90/180/270），三種模式輸出時都會套用
 let extractThumbsBuilt = false;
 function resetExtractPreview(){
   extractKeepSet = new Set();
+  extractRotations = [];
   extractThumbsBuilt = false;
   document.getElementById("extract-grid").innerHTML = "";
   document.getElementById("extract-toolbar").style.display = "none";
+  document.getElementById("split-rotate-toolbar").style.display = "none";
+  document.getElementById("split-rotate-hint").style.display = "none";
   document.getElementById("extract-pages").value = "";
 }
 setupDropzone("dz-split","input-split", async files=>{
@@ -1116,6 +1398,7 @@ setupDropzone("dz-split","input-split", async files=>{
     const jsBytes = await splitFile.arrayBuffer();
     splitPdfJsDoc = await pdfjsLib.getDocument({ data: jsBytes }).promise;
     const pageCount = splitPdfDoc.getPageCount();
+    extractRotations = new Array(pageCount).fill(0);
     const li = document.createElement("li");
     li.innerHTML = `<span class="name">${splitFile.name}</span><span class="meta">共 ${pageCount} 頁 · ${fmtSize(splitFile.size)} · ${fmtDate(splitFile.lastModified)}</span>`;
     const rm = document.createElement("button");
@@ -1124,9 +1407,8 @@ setupDropzone("dz-split","input-split", async files=>{
     li.appendChild(rm);
     ul.appendChild(li);
     statusEl.textContent = "";
-    if(document.querySelector('input[name="splitmode"]:checked').value === "extract"){
-      buildExtractPreview();
-    }
+    // 縮圖網格對三種模式都會建立，方便先預覽再決定要不要轉
+    await buildExtractPreview();
   } catch(err){
     statusEl.textContent = "無法讀取此 PDF：" + err.message;
     statusEl.classList.add("error");
@@ -1135,10 +1417,7 @@ setupDropzone("dz-split","input-split", async files=>{
 });
 document.getElementById("clearresults-split").addEventListener("click", async ()=>{
   clearResultsArea(document.getElementById("results-split"), null, document.getElementById("status-split"), document.getElementById("clearresults-split"));
-  resetExtractPreview();
-  const mode = document.querySelector('input[name="splitmode"]:checked').value;
-  if(splitPdfJsDoc && mode === "extract"){
-    await buildExtractPreview(); // 會先預設全選，接著手動清空選取，讓縮圖保留但回到「未選取」狀態
+  if(splitPdfJsDoc){
     extractKeepSet.clear();
     document.querySelectorAll("#extract-grid .thumb").forEach(div=>{
       div.classList.remove("kept"); div.classList.add("removed");
@@ -1153,13 +1432,13 @@ document.querySelectorAll('input[name="splitmode"]').forEach(radio=>{
     document.getElementById("field-every").style.display = mode === "every" ? "flex" : "none";
     document.getElementById("field-custom").style.display = mode === "custom" ? "flex" : "none";
     document.getElementById("field-extract").style.display = mode === "extract" ? "flex" : "none";
-    if(mode === "extract" && splitPdfJsDoc && !extractThumbsBuilt){
-      buildExtractPreview();
+    if(extractThumbsBuilt){
+      document.getElementById("extract-toolbar").style.display = mode === "extract" ? "flex" : "none";
     }
   });
 });
 
-// ---- 擷取頁面：縮圖預覽 ----
+// ---- 縮圖預覽（固定頁數 / 自訂範圍 / 擷取指定頁面 共用）----
 function compressPagesToRangeString(pagesSet){
   const sorted = [...pagesSet].sort((a,b)=>a-b);
   const parts = [];
@@ -1179,28 +1458,35 @@ function syncExtractTextFromKeepSet(){
 function updateExtractStatus(){
   const maxPage = splitPdfJsDoc ? splitPdfJsDoc.numPages : 0;
   document.getElementById("extract-status").textContent = `已選擷取 ${extractKeepSet.size} / ${maxPage} 頁`;
+  const rotatedCount = extractRotations.filter(d=>d!==0).length;
+  document.getElementById("split-rotate-status").textContent = `共 ${maxPage} 頁，已調整 ${rotatedCount} 頁`;
 }
 async function buildExtractPreview(){
   const grid = document.getElementById("extract-grid");
   const toolbar = document.getElementById("extract-toolbar");
-  if(!splitPdfJsDoc){ grid.innerHTML = ""; toolbar.style.display = "none"; return; }
+  const rotToolbar = document.getElementById("split-rotate-toolbar");
+  const rotHint = document.getElementById("split-rotate-hint");
+  const mode = document.querySelector('input[name="splitmode"]:checked').value;
+  if(!splitPdfJsDoc){ grid.innerHTML = ""; toolbar.style.display = "none"; rotToolbar.style.display = "none"; rotHint.style.display = "none"; return; }
   const maxPage = splitPdfJsDoc.numPages;
   const THUMB_LIMIT = 150;
   if(maxPage > THUMB_LIMIT){
-    grid.innerHTML = `<div class="thumb-loading">此 PDF 共 ${maxPage} 頁，頁數較多已停用縮圖預覽以避免瀏覽器過慢，請直接在上方輸入頁碼。</div>`;
-    toolbar.style.display = "none";
+    grid.innerHTML = `<div class="thumb-loading">此 PDF 共 ${maxPage} 頁，頁數較多已停用縮圖預覽，暫不支援逐頁旋轉，請直接在上方輸入頁碼。</div>`;
+    toolbar.style.display = "none"; rotToolbar.style.display = "none"; rotHint.style.display = "none";
     return;
   }
   if(extractKeepSet.size === 0){
     for(let i=1;i<=maxPage;i++) extractKeepSet.add(i);
   }
-  toolbar.style.display = "flex";
+  toolbar.style.display = mode === "extract" ? "flex" : "none";
+  rotToolbar.style.display = "flex";
+  rotHint.style.display = "block";
   grid.innerHTML = `<div class="thumb-loading">縮圖產生中…</div>`;
   const frag = document.createDocumentFragment();
   for(let i=1;i<=maxPage;i++){
     const page = await splitPdfJsDoc.getPage(i);
     const baseViewport = page.getViewport({ scale: 1 });
-    const scale = 110 / baseViewport.width;
+    const scale = 160 / baseViewport.width;
     const viewport = page.getViewport({ scale });
     const canvas = document.createElement("canvas");
     canvas.width = Math.ceil(viewport.width);
@@ -1210,9 +1496,23 @@ async function buildExtractPreview(){
     const div = document.createElement("div");
     div.className = "thumb " + (extractKeepSet.has(i) ? "kept" : "removed");
     div.dataset.page = i;
+    canvas.style.transform = `rotate(${extractRotations[i-1]||0}deg)`;
     const label = document.createElement("span");
     label.className = "pagenum"; label.textContent = i;
-    div.appendChild(canvas); div.appendChild(label);
+    const badge = document.createElement("span");
+    badge.className = "degbadge"; badge.textContent = (extractRotations[i-1]||0) + "°";
+    const rotBtn = document.createElement("button");
+    rotBtn.type = "button"; rotBtn.className = "rot-btn"; rotBtn.title = "旋轉此頁 90°";
+    rotBtn.textContent = "⟳";
+    rotBtn.addEventListener("click", (e)=>{
+      e.stopPropagation();
+      extractRotations[i-1] = ((extractRotations[i-1]||0) + 90) % 360;
+      canvas.style.transform = `rotate(${extractRotations[i-1]}deg)`;
+      badge.textContent = extractRotations[i-1] + "°";
+      div.classList.toggle("deg-rotated", extractRotations[i-1] !== 0);
+    });
+    div.appendChild(canvas); div.appendChild(label); div.appendChild(badge); div.appendChild(rotBtn);
+    div.classList.toggle("deg-rotated", (extractRotations[i-1]||0) !== 0);
     div.addEventListener("click", ()=>{
       if(extractKeepSet.has(i)){
         extractKeepSet.delete(i); div.classList.remove("kept"); div.classList.add("removed");
@@ -1229,6 +1529,35 @@ async function buildExtractPreview(){
   syncExtractTextFromKeepSet();
   updateExtractStatus();
   extractThumbsBuilt = true;
+}
+function resetExtractRotations(n){
+  extractRotations = new Array(n).fill(0);
+}
+document.getElementById("extract-rotate-all-cw").addEventListener("click", ()=>{
+  if(!splitPdfJsDoc) return;
+  extractRotations = extractRotations.map(d=>(d+90)%360);
+  syncExtractRotationThumbs();
+});
+document.getElementById("extract-rotate-all-ccw").addEventListener("click", ()=>{
+  if(!splitPdfJsDoc) return;
+  extractRotations = extractRotations.map(d=>(d+270)%360);
+  syncExtractRotationThumbs();
+});
+document.getElementById("extract-rotate-all-reset").addEventListener("click", ()=>{
+  if(!splitPdfJsDoc) return;
+  extractRotations = extractRotations.map(()=>0);
+  syncExtractRotationThumbs();
+});
+function syncExtractRotationThumbs(){
+  document.querySelectorAll("#extract-grid .thumb").forEach(div=>{
+    const p = parseInt(div.dataset.page, 10);
+    const idx = p - 1;
+    const canvas = div.querySelector("canvas");
+    const badge = div.querySelector(".degbadge");
+    canvas.style.transform = `rotate(${extractRotations[idx]}deg)`;
+    badge.textContent = extractRotations[idx] + "°";
+    div.classList.toggle("deg-rotated", extractRotations[idx] !== 0);
+  });
 }
 document.getElementById("extract-pages").addEventListener("change", ()=>{
   if(!splitPdfJsDoc || !extractThumbsBuilt) return;
@@ -1302,7 +1631,16 @@ document.getElementById("btn-split").addEventListener("click", async ()=>{
       const newDoc = await PDFDocument.create();
       const zeroBased = groups[i].pages.map(p=>p-1);
       const copied = await newDoc.copyPages(splitPdfDoc, zeroBased);
-      copied.forEach(p=>newDoc.addPage(p));
+      copied.forEach((p, j)=>{
+        newDoc.addPage(p);
+        const origPageNum = groups[i].pages[j]; // 1-based
+        const delta = extractRotations[origPageNum-1] || 0;
+        if(delta !== 0){
+          const current = p.getRotation().angle;
+          const newAngle = ((current + delta) % 360 + 360) % 360;
+          p.setRotation(degrees(newAngle));
+        }
+      });
       const bytes = await newDoc.save();
       const filename = mode === "extract" ? `${base}_extracted.pdf` : `${base}_${groups[i].label}.pdf`;
       outputs.push({ filename, blob: new Blob([bytes], { type: "application/pdf" }) });
@@ -1393,7 +1731,7 @@ async function buildRotatePreview(){
   }
   toolbar.style.display = "flex";
   grid.innerHTML = `<div class="thumb-loading">縮圖產生中…</div>`;
-  const CELL = 104;
+  const CELL = 160;
   const frag = document.createDocumentFragment();
   for(let i=1;i<=maxPage;i++){
     const page = await rotatePdfJsDoc.getPage(i);
